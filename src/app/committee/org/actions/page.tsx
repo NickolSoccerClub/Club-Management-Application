@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select } from "@/components/ui/select";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Filter,
   Calendar,
@@ -12,6 +17,7 @@ import {
   CheckCircle2,
   Clock,
   ArrowRight,
+  Plus,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -68,9 +74,18 @@ const COLUMN_STYLE: Record<ActionStatus, { bg: string; icon: React.ElementType; 
 /* ------------------------------------------------------------------ */
 
 export default function ActionsPage() {
+  const [loading, setLoading] = useState(true);
   const [assigneeFilter, setAssigneeFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [meetingFilter, setMeetingFilter] = useState("All");
+  const [confirmAction, setConfirmAction] = useState<ActionItem | null>(null);
+  const [confirmNewStatus, setConfirmNewStatus] = useState<ActionStatus | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const assignees = useMemo(() => {
     const names = [...new Set(MOCK_ACTIONS.map((a) => a.assignedTo))];
@@ -91,16 +106,53 @@ export default function ActionsPage() {
     });
   }, [assigneeFilter, priorityFilter, meetingFilter]);
 
+  const handleStatusChange = (action: ActionItem, newStatus: ActionStatus) => {
+    setConfirmAction(action);
+    setConfirmNewStatus(newStatus);
+  };
+
+  const handleConfirmStatusChange = () => {
+    if (confirmAction && confirmNewStatus) {
+      addToast("Action updated", "success");
+    }
+    setConfirmAction(null);
+    setConfirmNewStatus(null);
+  };
+
+  const handleAddAction = () => {
+    addToast("Action created", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Action Items">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <AlertCircle className="h-4 w-4 text-[#B91C1C]" />
+            Loading...
+          </div>
+        </PageHeader>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-3">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold text-[#0B2545]">Action Items</h2>
+      <PageHeader title="Action Items">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <AlertCircle className="h-4 w-4 text-[#B91C1C]" />
           {MOCK_ACTIONS.filter((a) => a.overdue && a.status !== "Completed").length} overdue
         </div>
-      </div>
+      </PageHeader>
 
       {/* Filters */}
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-end">
@@ -109,43 +161,32 @@ export default function ActionsPage() {
           Filters:
         </div>
         <div className="flex flex-wrap gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Assigned To</label>
-            <select
-              value={assigneeFilter}
-              onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {assignees.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Priority</label>
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              <option value="All">All</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Meeting</label>
-            <select
-              value={meetingFilter}
-              onChange={(e) => setMeetingFilter(e.target.value)}
-              className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {meetings.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="Assigned To"
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            options={assignees.map((a) => ({ label: a, value: a }))}
+            className="h-9"
+          />
+          <Select
+            label="Priority"
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            options={[
+              { label: "All", value: "All" },
+              { label: "High", value: "High" },
+              { label: "Medium", value: "Medium" },
+              { label: "Low", value: "Low" },
+            ]}
+            className="h-9"
+          />
+          <Select
+            label="Meeting"
+            value={meetingFilter}
+            onChange={(e) => setMeetingFilter(e.target.value)}
+            options={meetings.map((m) => ({ label: m, value: m }))}
+            className="h-9"
+          />
         </div>
       </div>
 
@@ -214,8 +255,23 @@ export default function ActionsPage() {
                         </div>
                       </div>
 
-                      <div className="mt-2">
+                      <div className="mt-2 flex items-center justify-between">
                         <span className="text-[10px] text-gray-400">{action.source}</span>
+                        {action.status !== "Completed" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() =>
+                              handleStatusChange(
+                                action,
+                                action.status === "To Do" ? "In Progress" : "Completed"
+                              )
+                            }
+                          >
+                            {action.status === "To Do" ? "Start" : "Complete"}
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -231,6 +287,26 @@ export default function ActionsPage() {
           );
         })}
       </div>
+
+      {/* Confirm status change dialog */}
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmAction(null);
+            setConfirmNewStatus(null);
+          }
+        }}
+        onConfirm={handleConfirmStatusChange}
+        title="Update Action Status"
+        description={
+          confirmAction
+            ? `Move "${confirmAction.title}" to ${confirmNewStatus}?`
+            : ""
+        }
+        variant="accent"
+        confirmLabel="Confirm"
+      />
     </div>
   );
 }

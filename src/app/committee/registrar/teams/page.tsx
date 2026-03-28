@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Users,
@@ -190,6 +195,11 @@ const STATUS_VARIANT: Record<TeamStatus, "success" | "default" | "warning"> = {
 
 const SEASONS = ["2026", "2025", "2024"];
 
+const SEASON_OPTIONS = SEASONS.map((s) => ({
+  label: `Season ${s}`,
+  value: s,
+}));
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -197,6 +207,15 @@ const SEASONS = ["2026", "2025", "2024"];
 export default function TeamManagementPage() {
   const [season, setSeason] = useState("2026");
   const [expandedTeam, setExpandedTeam] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [autoAssignOpen, setAutoAssignOpen] = useState(false);
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleExpand = (id: number) => {
     setExpandedTeam((prev) => (prev === id ? null : id));
@@ -205,112 +224,118 @@ export default function TeamManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Team Management</h2>
-          <p className="text-sm text-gray-500">{MOCK_TEAMS.length} teams configured for Season {season}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={season}
-            onChange={(e) => setSeason(e.target.value)}
-            className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-          >
-            {SEASONS.map((s) => (
-              <option key={s} value={s}>Season {s}</option>
-            ))}
-          </select>
-          <Button variant="accent" size="sm">
-            <Plus className="mr-1.5 h-4 w-4" />
-            Create Team
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Team Management"
+        subtitle={`${MOCK_TEAMS.length} teams configured for Season ${season}`}
+      >
+        <Select
+          value={season}
+          onChange={(e) => setSeason(e.target.value)}
+          options={SEASON_OPTIONS}
+          className="w-40"
+        />
+        <Button
+          variant="accent"
+          size="sm"
+          onClick={() => addToast("Team created", "success")}
+        >
+          <Plus className="mr-1.5 h-4 w-4" />
+          Create Team
+        </Button>
+      </PageHeader>
 
       {/* Team grid */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {MOCK_TEAMS.map((team) => {
-          const pct = Math.round((team.players.length / team.capacity) * 100);
-          const isExpanded = expandedTeam === team.id;
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {MOCK_TEAMS.map((team) => {
+            const pct = Math.round((team.players.length / team.capacity) * 100);
+            const isExpanded = expandedTeam === team.id;
 
-          return (
-            <Card key={team.id} className="overflow-hidden">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-base">{team.name}</CardTitle>
-                  <Badge variant={STATUS_VARIANT[team.status]}>{team.status}</Badge>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge variant="info">{team.ageGroup}</Badge>
-                  <Badge>{team.division} Division</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium text-[#0B2545]">Coach:</span> {team.coach}
-                </div>
-
-                {/* Capacity bar */}
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="text-gray-500">
-                      <Users className="mr-1 inline h-3.5 w-3.5" />
-                      {team.players.length}/{team.capacity} players
-                    </span>
-                    <span className="font-medium text-gray-600">{pct}%</span>
+            return (
+              <Card key={team.id} className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base">{team.name}</CardTitle>
+                    <Badge variant={STATUS_VARIANT[team.status]}>{team.status}</Badge>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        pct >= 100 ? "bg-[#B45309]" : pct >= 75 ? "bg-[#1D4ED8]" : "bg-[#15803D]"
-                      )}
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge variant="info">{team.ageGroup}</Badge>
+                    <Badge>{team.division} Division</Badge>
                   </div>
-                </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium text-[#0B2545]">Coach:</span> {team.coach}
+                  </div>
 
-                {/* Manage Players toggle */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-between"
-                  onClick={() => toggleExpand(team.id)}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <UserPlus className="h-4 w-4" />
-                    Manage Players
-                  </span>
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </Button>
-
-                {/* Expandable player list */}
-                {isExpanded && (
-                  <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2">
-                    {team.players.map((player) => (
+                  {/* Capacity bar */}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="text-gray-500">
+                        <Users className="mr-1 inline h-3.5 w-3.5" />
+                        {team.players.length}/{team.capacity} players
+                      </span>
+                      <span className="font-medium text-gray-600">{pct}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
                       <div
-                        key={player.id}
-                        className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm shadow-sm"
-                      >
-                        <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-gray-300" />
-                        <span className="font-medium text-[#0B2545]">{player.name}</span>
-                        <Badge className="ml-auto text-[10px]">{player.ageGroup}</Badge>
-                      </div>
-                    ))}
-                    {team.players.length === 0 && (
-                      <p className="py-4 text-center text-xs text-gray-400">No players assigned</p>
-                    )}
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          pct >= 100 ? "bg-[#B45309]" : pct >= 75 ? "bg-[#1D4ED8]" : "bg-[#15803D]"
+                        )}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+
+                  {/* Manage Players toggle */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-between"
+                    onClick={() => toggleExpand(team.id)}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <UserPlus className="h-4 w-4" />
+                      Manage Players
+                    </span>
+                    {isExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </Button>
+
+                  {/* Expandable player list */}
+                  {isExpanded && (
+                    <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2">
+                      {team.players.map((player) => (
+                        <div
+                          key={player.id}
+                          className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm shadow-sm"
+                        >
+                          <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-gray-300" />
+                          <span className="font-medium text-[#0B2545]">{player.name}</span>
+                          <Badge className="ml-auto text-[10px]">{player.ageGroup}</Badge>
+                        </div>
+                      ))}
+                      {team.players.length === 0 && (
+                        <p className="py-4 text-center text-xs text-gray-400">No players assigned</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Unassigned players */}
       <Card>
@@ -320,7 +345,11 @@ export default function TeamManagementPage() {
               <CardTitle className="text-base">Unassigned Players</CardTitle>
               <p className="mt-1 text-sm text-gray-500">{UNASSIGNED_PLAYERS.length} players not yet allocated to a team</p>
             </div>
-            <Button variant="accent" size="sm">
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => setAutoAssignOpen(true)}
+            >
               <Sparkles className="mr-1.5 h-4 w-4" />
               Auto-Assign
             </Button>
@@ -337,12 +366,29 @@ export default function TeamManagementPage() {
                   <p className="text-sm font-medium text-[#0B2545]">{player.name}</p>
                   <p className="text-xs text-gray-500">{player.ageGroup}</p>
                 </div>
-                <Button variant="ghost" size="sm">Assign</Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => addToast("Player assigned successfully", "success")}
+                >
+                  Assign
+                </Button>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
+
+      {/* Auto-Assign confirmation dialog */}
+      <ConfirmDialog
+        open={autoAssignOpen}
+        onOpenChange={setAutoAssignOpen}
+        title="Auto-Assign Players"
+        description="This will automatically assign all unassigned players to their age-group teams based on capacity. Continue?"
+        confirmLabel="Auto-Assign"
+        variant="accent"
+        onConfirm={() => addToast("Auto-assign completed", "success")}
+      />
     </div>
   );
 }

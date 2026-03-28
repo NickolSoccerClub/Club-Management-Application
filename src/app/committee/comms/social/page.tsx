@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,13 @@ import {
   Trophy,
   Calendar,
   Image,
+  Trash2,
+  Send,
 } from "lucide-react";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 
 /* ------------------------------------------------------------------ */
 /*  Mock data                                                          */
@@ -74,19 +80,56 @@ const STATUS_ICON: Record<PostStatus, React.ElementType> = {
 
 export default function SocialMediaPage() {
   const [ugcAutoPost, setUgcAutoPost] = useState(true);
+  const [posts, setPosts] = useState(MOCK_POSTS);
+  const [loading, setLoading] = useState(true);
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Confirm dialog state
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleSchedule = (id: number) => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, status: "Scheduled" as PostStatus } : p))
+    );
+    addToast("Post scheduled", "success");
+  };
+
+  const handleDelete = (id: number) => {
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+    addToast("Post deleted", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Social Media" subtitle="Manage connected accounts and scheduled posts">
+          <Badge variant="success">2 Connected</Badge>
+        </PageHeader>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <SkeletonCard />
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Social Media</h2>
-          <p className="text-sm text-gray-500">Manage connected accounts and scheduled posts</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="success">2 Connected</Badge>
-        </div>
-      </div>
+      <PageHeader title="Social Media" subtitle="Manage connected accounts and scheduled posts">
+        <Badge variant="success">2 Connected</Badge>
+      </PageHeader>
 
       {/* Connected accounts */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -179,7 +222,7 @@ export default function SocialMediaPage() {
       <div>
         <h3 className="mb-4 text-lg font-semibold text-[#0B2545]">Scheduled &amp; Recent Posts</h3>
         <div className="space-y-4">
-          {MOCK_POSTS.map((post) => {
+          {posts.map((post) => {
             const StatusIcon = STATUS_ICON[post.status];
             return (
               <Card key={post.id} className="overflow-hidden">
@@ -214,6 +257,28 @@ export default function SocialMediaPage() {
                           </span>
                         ))}
                       </div>
+                      <div className="ml-auto flex gap-1">
+                        {post.status !== "Scheduled" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-[#1D4ED8] hover:bg-[#1D4ED8]/10"
+                            onClick={() => handleSchedule(post.id)}
+                          >
+                            <Send className="mr-1 h-3 w-3" />
+                            Schedule
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-[#B91C1C] hover:bg-[#B91C1C]/10"
+                          onClick={() => setConfirmDelete({ open: true, postId: post.id })}
+                        >
+                          <Trash2 className="mr-1 h-3 w-3" />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </div>
@@ -222,6 +287,19 @@ export default function SocialMediaPage() {
           })}
         </div>
       </div>
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, postId: open ? confirmDelete.postId : null })}
+        onConfirm={() => {
+          if (confirmDelete.postId !== null) handleDelete(confirmDelete.postId);
+        }}
+        title="Delete Post"
+        description="Are you sure you want to delete this post? This action cannot be undone."
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

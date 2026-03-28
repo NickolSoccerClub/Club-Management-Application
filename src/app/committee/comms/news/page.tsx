@@ -1,12 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Edit2,
@@ -80,17 +86,64 @@ const STATUS_VARIANT: Record<PostStatus, "success" | "default" | "info"> = {
   Scheduled: "info",
 };
 
+const STATUS_OPTIONS = [
+  { label: "Draft", value: "Draft" },
+  { label: "Published", value: "Published" },
+  { label: "Scheduled", value: "Scheduled" },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function NewsManagementPage() {
+  const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
+  const [postStatus, setPostStatus] = useState("Draft");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmUnpublishOpen, setConfirmUnpublishOpen] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const stats = {
     published: MOCK_POSTS.filter((p) => p.status === "Published").length,
     drafts: MOCK_POSTS.filter((p) => p.status === "Draft").length,
     scheduled: MOCK_POSTS.filter((p) => p.status === "Scheduled").length,
+  };
+
+  const handlePublish = () => {
+    addToast("Article published", "success");
+    setShowEditor(false);
+  };
+
+  const handleSaveDraft = () => {
+    addToast("Draft saved", "success");
+    setShowEditor(false);
+  };
+
+  const handleDeleteClick = (postId: number) => {
+    setSelectedPostId(postId);
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    addToast("Article deleted", "success");
+    setSelectedPostId(null);
+  };
+
+  const handleUnpublishClick = (postId: number) => {
+    setSelectedPostId(postId);
+    setConfirmUnpublishOpen(true);
+  };
+
+  const handleConfirmUnpublish = () => {
+    addToast("Article unpublished", "success");
+    setSelectedPostId(null);
   };
 
   const PostCard = ({ post }: { post: Post }) => (
@@ -116,13 +169,26 @@ export default function NewsManagementPage() {
               <span className="ml-2">by {post.author}</span>
             </div>
             <div className="flex gap-1">
-              <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
-                <Eye className="h-4 w-4" />
-              </button>
+              {post.status === "Published" && (
+                <button
+                  onClick={() => handleUnpublishClick(post.id)}
+                  className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+              )}
+              {post.status !== "Published" && (
+                <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
+                  <Eye className="h-4 w-4" />
+                </button>
+              )}
               <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
                 <Edit2 className="h-4 w-4" />
               </button>
-              <button className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-[#B91C1C]">
+              <button
+                onClick={() => handleDeleteClick(post.id)}
+                className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-[#B91C1C]"
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -132,19 +198,34 @@ export default function NewsManagementPage() {
     </Card>
   );
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="News & Updates"
+          subtitle="Create and manage club news posts"
+        />
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">News &amp; Updates</h2>
-          <p className="text-sm text-gray-500">Create and manage club news posts</p>
-        </div>
+      <PageHeader
+        title="News & Updates"
+        subtitle="Create and manage club news posts"
+      >
         <Button variant="accent" size="sm" onClick={() => setShowEditor(!showEditor)}>
           <Plus className="mr-1.5 h-4 w-4" />
           New Post
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
@@ -173,22 +254,19 @@ export default function NewsManagementPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Input label="Title" placeholder="Enter post title..." />
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Excerpt</label>
-              <textarea
-                placeholder="Brief summary for previews..."
-                rows={2}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Content</label>
-              <textarea
-                placeholder="Write your post content here..."
-                rows={8}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-              />
-            </div>
+
+            <Textarea
+              label="Excerpt"
+              placeholder="Brief summary for previews..."
+              rows={2}
+            />
+
+            <Textarea
+              label="Content"
+              placeholder="Write your post content here..."
+              rows={8}
+            />
+
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Cover Image</label>
               <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 p-8">
@@ -200,24 +278,44 @@ export default function NewsManagementPage() {
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Status</label>
-                <select className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-                  <option>Draft</option>
-                  <option>Published</option>
-                  <option>Scheduled</option>
-                </select>
-              </div>
+              <Select
+                label="Status"
+                options={STATUS_OPTIONS}
+                value={postStatus}
+                onChange={(e) => setPostStatus(e.target.value)}
+              />
               <Input label="Publish Date" type="date" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" size="sm" onClick={() => setShowEditor(false)}>Cancel</Button>
-              <Button variant="secondary" size="sm">Save Draft</Button>
-              <Button variant="accent" size="sm">Publish</Button>
+              <Button variant="secondary" size="sm" onClick={handleSaveDraft}>Save Draft</Button>
+              <Button variant="accent" size="sm" onClick={handlePublish}>Publish</Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Confirm delete dialog */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        onConfirm={handleConfirmDelete}
+        title="Delete Article"
+        description="Are you sure you want to delete this article? This action cannot be undone."
+        variant="danger"
+        confirmLabel="Delete"
+      />
+
+      {/* Confirm unpublish dialog */}
+      <ConfirmDialog
+        open={confirmUnpublishOpen}
+        onOpenChange={setConfirmUnpublishOpen}
+        onConfirm={handleConfirmUnpublish}
+        title="Unpublish Article"
+        description="Are you sure you want to unpublish this article? It will be reverted to draft status."
+        variant="danger"
+        confirmLabel="Unpublish"
+      />
 
       {/* Tabs & post list */}
       <Tabs defaultValue="all">

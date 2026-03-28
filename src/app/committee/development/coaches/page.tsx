@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { useToastStore } from "@/lib/stores/toast-store";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   GraduationCap,
   Clock,
@@ -81,6 +85,20 @@ const WWCC_VARIANT: Record<WWCCStatus, "success" | "warning" | "danger"> = {
 
 export default function CoachManagementPage() {
   const [search, setSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    type: "approve" | "decline";
+    eoiName: string;
+    eoiId: number;
+  }>({ open: false, type: "approve", eoiName: "", eoiId: 0 });
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const activeCount = MOCK_COACHES.length;
   const pendingCount = MOCK_EOIS.length;
@@ -94,12 +112,26 @@ export default function CoachManagementPage() {
     e.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleApproveClick = (eoi: EOI) => {
+    setConfirmDialog({ open: true, type: "approve", eoiName: eoi.name, eoiId: eoi.id });
+  };
+
+  const handleDeclineClick = (eoi: EOI) => {
+    setConfirmDialog({ open: true, type: "decline", eoiName: eoi.name, eoiId: eoi.id });
+  };
+
+  const handleConfirm = () => {
+    if (confirmDialog.type === "approve") {
+      addToast("Coach approved", "success");
+    } else {
+      addToast("Application declined", "success");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold text-[#0B2545]">Coach Management</h2>
-      </div>
+      <PageHeader title="Coach Management" />
 
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -149,135 +181,173 @@ export default function CoachManagementPage() {
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="active">
-        <TabsList>
-          <TabsTrigger value="active">Active Coaches</TabsTrigger>
-          <TabsTrigger value="eoi">EOI Queue</TabsTrigger>
-          <TabsTrigger value="archived">Archived</TabsTrigger>
-        </TabsList>
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : (
+        /* Tabs */
+        <Tabs defaultValue="active">
+          <TabsList>
+            <TabsTrigger value="active">Active Coaches</TabsTrigger>
+            <TabsTrigger value="eoi">EOI Queue</TabsTrigger>
+            <TabsTrigger value="archived">Archived</TabsTrigger>
+          </TabsList>
 
-        {/* Active Coaches */}
-        <TabsContent value="active">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredCoaches.map((coach) => (
-              <Card key={coach.id} className="overflow-hidden">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0B2545] text-sm font-bold text-white">
-                      {coach.avatar}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-base">{coach.name}</CardTitle>
-                      <p className="text-sm text-gray-500">
-                        {coach.teams.join(", ")} &middot; {coach.ageGroup}
-                      </p>
-                    </div>
-                    <Badge variant={WWCC_VARIANT[coach.wwccStatus]}>
-                      <ShieldCheck className="mr-1 h-3 w-3" />
-                      WWCC {coach.wwccStatus}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {coach.qualifications.map((q) => (
-                      <Badge key={q} variant="info">
-                        <Award className="mr-1 h-3 w-3" />
-                        {q}
+          {/* Active Coaches */}
+          <TabsContent value="active">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredCoaches.map((coach) => (
+                <Card key={coach.id} className="overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0B2545] text-sm font-bold text-white">
+                        {coach.avatar}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="text-base">{coach.name}</CardTitle>
+                        <p className="text-sm text-gray-500">
+                          {coach.teams.join(", ")} &middot; {coach.ageGroup}
+                        </p>
+                      </div>
+                      <Badge variant={WWCC_VARIANT[coach.wwccStatus]}>
+                        <ShieldCheck className="mr-1 h-3 w-3" />
+                        WWCC {coach.wwccStatus}
                       </Badge>
-                    ))}
-                  </div>
-                  <div className="space-y-1 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-gray-400" />
-                      {coach.email}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 text-gray-400" />
-                      {coach.phone}
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {coach.qualifications.map((q) => (
+                        <Badge key={q} variant="info">
+                          <Award className="mr-1 h-3 w-3" />
+                          {q}
+                        </Badge>
+                      ))}
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                    <span className="text-xs text-gray-400">
-                      WWCC Expires: {coach.wwccExpiry}
-                    </span>
-                    <Button variant="secondary" size="sm">
-                      <Edit className="mr-1.5 h-3.5 w-3.5" />
-                      Edit Assignment
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          {filteredCoaches.length === 0 && (
-            <p className="py-12 text-center text-gray-400">No coaches match your search.</p>
-          )}
-        </TabsContent>
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-gray-400" />
+                        {coach.email}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3.5 w-3.5 text-gray-400" />
+                        {coach.phone}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                      <span className="text-xs text-gray-400">
+                        WWCC Expires: {coach.wwccExpiry}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => addToast("Coach details saved", "success")}
+                      >
+                        <Edit className="mr-1.5 h-3.5 w-3.5" />
+                        Edit Assignment
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            {filteredCoaches.length === 0 && (
+              <p className="py-12 text-center text-gray-400">No coaches match your search.</p>
+            )}
+          </TabsContent>
 
-        {/* EOI Queue */}
-        <TabsContent value="eoi">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredEOIs.map((eoi) => (
-              <Card key={eoi.id} className="overflow-hidden border-l-4 border-l-[#B45309]">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-bold text-[#B45309]">
-                      {eoi.avatar}
+          {/* EOI Queue */}
+          <TabsContent value="eoi">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredEOIs.map((eoi) => (
+                <Card key={eoi.id} className="overflow-hidden border-l-4 border-l-[#B45309]">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-bold text-[#B45309]">
+                        {eoi.avatar}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="text-base">{eoi.name}</CardTitle>
+                        <p className="text-sm text-gray-500">
+                          {eoi.preferredRole} &middot; {eoi.ageGroup}
+                        </p>
+                      </div>
+                      <Badge variant={WWCC_VARIANT[eoi.wwccStatus]}>
+                        <ShieldCheck className="mr-1 h-3 w-3" />
+                        WWCC {eoi.wwccStatus}
+                      </Badge>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-base">{eoi.name}</CardTitle>
-                      <p className="text-sm text-gray-500">
-                        {eoi.preferredRole} &middot; {eoi.ageGroup}
-                      </p>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-gray-600 line-clamp-3">{eoi.experience}</p>
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-gray-400" />
+                        {eoi.email}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3.5 w-3.5 text-gray-400" />
+                        {eoi.phone}
+                      </div>
                     </div>
-                    <Badge variant={WWCC_VARIANT[eoi.wwccStatus]}>
-                      <ShieldCheck className="mr-1 h-3 w-3" />
-                      WWCC {eoi.wwccStatus}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-gray-600 line-clamp-3">{eoi.experience}</p>
-                  <div className="space-y-1 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 text-gray-400" />
-                      {eoi.email}
+                    <p className="text-xs text-gray-400">Submitted: {eoi.submittedDate}</p>
+                    <div className="flex gap-2 border-t border-gray-100 pt-3">
+                      <Button
+                        variant="accent"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleApproveClick(eoi)}
+                      >
+                        <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+                        Approve
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleDeclineClick(eoi)}
+                      >
+                        <XCircle className="mr-1.5 h-3.5 w-3.5" />
+                        Decline
+                      </Button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 text-gray-400" />
-                      {eoi.phone}
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400">Submitted: {eoi.submittedDate}</p>
-                  <div className="flex gap-2 border-t border-gray-100 pt-3">
-                    <Button variant="accent" size="sm" className="flex-1">
-                      <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-                      Approve
-                    </Button>
-                    <Button variant="danger" size="sm" className="flex-1">
-                      <XCircle className="mr-1.5 h-3.5 w-3.5" />
-                      Decline
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          {filteredEOIs.length === 0 && (
-            <p className="py-12 text-center text-gray-400">No pending EOIs.</p>
-          )}
-        </TabsContent>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            {filteredEOIs.length === 0 && (
+              <p className="py-12 text-center text-gray-400">No pending EOIs.</p>
+            )}
+          </TabsContent>
 
-        {/* Archived */}
-        <TabsContent value="archived">
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-            <Users className="mb-3 h-10 w-10" />
-            <p className="text-sm">No archived coaches.</p>
-          </div>
-        </TabsContent>
-      </Tabs>
+          {/* Archived */}
+          <TabsContent value="archived">
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <Users className="mb-3 h-10 w-10" />
+              <p className="text-sm">No archived coaches.</p>
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        onConfirm={handleConfirm}
+        title={confirmDialog.type === "approve" ? "Approve Coach" : "Decline Application"}
+        description={
+          confirmDialog.type === "approve"
+            ? `Are you sure you want to approve ${confirmDialog.eoiName} as a coach?`
+            : `Are you sure you want to decline the application from ${confirmDialog.eoiName}?`
+        }
+        variant={confirmDialog.type === "approve" ? "accent" : "danger"}
+        confirmLabel={confirmDialog.type === "approve" ? "Approve" : "Decline"}
+      />
     </div>
   );
 }

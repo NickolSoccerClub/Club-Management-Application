@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { StatCard } from "@/components/committee/shared/stat-card";
+import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Skeleton, SkeletonTable } from "@/components/ui/skeleton";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Upload,
   FileSpreadsheet,
@@ -15,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  Loader2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -72,16 +79,57 @@ const STEPS = ["Upload File", "Map Columns", "Review", "Import"];
 export default function ImportCentrePage() {
   const [activeStep, setActiveStep] = useState(0);
   const [showConflicts, setShowConflicts] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingStep, setPendingStep] = useState<number | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleImportConfirm = () => {
+    if (pendingStep === null) return;
+
+    if (pendingStep === 3) {
+      // Step 3 "Confirm & Import" -> run import with loading
+      setIsImporting(true);
+      setTimeout(() => {
+        setIsImporting(false);
+        setActiveStep(3);
+        addToast("Import completed — 142 records processed", "success");
+      }, 1500);
+    } else {
+      // Step 2 -> 3 transition
+      setActiveStep(pendingStep);
+    }
+
+    setPendingStep(null);
+  };
+
+  const requestStepTransition = (targetStep: number) => {
+    if (targetStep === 2 && activeStep === 1) {
+      // Step 2 -> Review: show confirm
+      setPendingStep(targetStep);
+      setShowConfirmDialog(true);
+    } else if (targetStep === 3 && activeStep === 2) {
+      // Step 3 "Confirm & Import": show confirm
+      setPendingStep(targetStep);
+      setShowConfirmDialog(true);
+    } else {
+      setActiveStep(targetStep);
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold text-[#0B2545]">Import Centre</h2>
-        <p className="text-sm text-gray-500">
-          Import player registration data from PlayFootball exports. Upload an .xlsx file to begin the reconciliation process.
-        </p>
-      </div>
+      <PageHeader
+        title="Import Centre"
+        subtitle="Import player registration data from PlayFootball exports. Upload an .xlsx file to begin the reconciliation process."
+      />
 
       {/* Step indicator */}
       <div className="flex items-center gap-2 overflow-x-auto">
@@ -118,41 +166,63 @@ export default function ImportCentrePage() {
       {activeStep === 0 && (
         <Card>
           <CardContent className="p-8">
-            <div className="rounded-lg border-2 border-dashed border-[#1D4ED8]/30 bg-blue-50/30 p-12 text-center">
-              <FileSpreadsheet className="mx-auto h-14 w-14 text-[#1D4ED8]/40" />
-              <p className="mt-4 text-lg font-medium text-[#0B2545]">
-                Drop your PlayFootball export file here
-              </p>
-              <p className="mt-2 text-sm text-gray-500">
-                Accepts .xlsx files from PlayFootball data export
-              </p>
-              <Button variant="accent" size="md" className="mt-6">
-                <Upload className="mr-2 h-4 w-4" />
-                Select File
-              </Button>
-            </div>
+            {isLoading ? (
+              <div className="space-y-6">
+                <div className="rounded-lg border-2 border-dashed border-gray-200 p-12">
+                  <div className="flex flex-col items-center gap-4">
+                    <Skeleton className="h-14 w-14 rounded-lg" />
+                    <Skeleton className="h-5 w-64" />
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-10 w-32 rounded-md" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-4 w-72" />
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-4 w-80" />
+                  <Skeleton className="h-4 w-56" />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-lg border-2 border-dashed border-[#1D4ED8]/30 bg-blue-50/30 p-12 text-center">
+                  <FileSpreadsheet className="mx-auto h-14 w-14 text-[#1D4ED8]/40" />
+                  <p className="mt-4 text-lg font-medium text-[#0B2545]">
+                    Drop your PlayFootball export file here
+                  </p>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Accepts .xlsx files from PlayFootball data export
+                  </p>
+                  <Button variant="accent" size="md" className="mt-6">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Select File
+                  </Button>
+                </div>
 
-            <div className="mt-6 space-y-2">
-              <p className="text-sm font-medium text-[#0B2545]">Format Requirements:</p>
-              <ul className="space-y-1 text-sm text-gray-500">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
-                  File must be in .xlsx format (Excel)
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
-                  First row must contain column headers
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
-                  Must include FFA Number for matching existing records
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
-                  Date of Birth in DD/MM/YYYY format
-                </li>
-              </ul>
-            </div>
+                <div className="mt-6 space-y-2">
+                  <p className="text-sm font-medium text-[#0B2545]">Format Requirements:</p>
+                  <ul className="space-y-1 text-sm text-gray-500">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
+                      File must be in .xlsx format (Excel)
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
+                      First row must contain column headers
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
+                      Must include FFA Number for matching existing records
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
+                      Date of Birth in DD/MM/YYYY format
+                    </li>
+                  </ul>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -206,7 +276,7 @@ export default function ImportCentrePage() {
             </div>
             <div className="flex justify-end gap-2 border-t border-gray-100 px-4 py-3">
               <Button variant="secondary" size="sm" onClick={() => setActiveStep(0)}>Back</Button>
-              <Button variant="accent" size="sm" onClick={() => setActiveStep(2)}>Continue</Button>
+              <Button variant="accent" size="sm" onClick={() => requestStepTransition(2)}>Continue</Button>
             </div>
           </CardContent>
         </Card>
@@ -216,33 +286,27 @@ export default function ImportCentrePage() {
       {activeStep === 2 && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F0FDF4]">
-                <CheckCircle2 className="h-5 w-5 text-[#15803D]" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Matched Records</p>
-                <p className="text-2xl font-bold text-[#15803D]">118</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#EFF6FF]">
-                <UserPlus className="h-5 w-5 text-[#1D4ED8]" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">New Records</p>
-                <p className="text-2xl font-bold text-[#1D4ED8]">24</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#FFFBEB]">
-                <AlertTriangle className="h-5 w-5 text-[#B45309]" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Conflicts</p>
-                <p className="text-2xl font-bold text-[#B45309]">7</p>
-              </div>
-            </div>
+            <StatCard
+              label="Matched Records"
+              value={118}
+              icon={CheckCircle2}
+              iconColor="text-[#15803D]"
+              iconBg="bg-[#F0FDF4]"
+            />
+            <StatCard
+              label="New Records"
+              value={24}
+              icon={UserPlus}
+              iconColor="text-[#1D4ED8]"
+              iconBg="bg-blue-50"
+            />
+            <StatCard
+              label="Conflicts"
+              value={7}
+              icon={AlertTriangle}
+              iconColor="text-[#B45309]"
+              iconBg="bg-[#FFFBEB]"
+            />
           </div>
 
           {/* Conflicts expandable */}
@@ -288,10 +352,13 @@ export default function ImportCentrePage() {
                           <td className="px-4 py-3 text-gray-500">{c.current}</td>
                           <td className="px-4 py-3 font-medium text-[#B45309]">{c.imported}</td>
                           <td className="px-4 py-3">
-                            <select className="rounded border border-gray-300 px-2 py-1 text-xs">
-                              <option>Keep Current</option>
-                              <option>Use Import</option>
-                            </select>
+                            <Select
+                              options={[
+                                { label: "Keep Current", value: "keep" },
+                                { label: "Use Import", value: "import" },
+                              ]}
+                              className="h-8 w-auto min-w-[140px] text-xs"
+                            />
                           </td>
                         </tr>
                       ))}
@@ -304,23 +371,35 @@ export default function ImportCentrePage() {
 
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setActiveStep(1)}>Back</Button>
-            <Button variant="accent" size="sm" onClick={() => setActiveStep(3)}>Confirm &amp; Import</Button>
+            <Button variant="accent" size="sm" onClick={() => requestStepTransition(3)}>Confirm &amp; Import</Button>
           </div>
         </div>
       )}
 
-      {/* Step 4: Import complete */}
+      {/* Step 4: Import complete (or importing) */}
       {activeStep === 3 && (
         <Card>
           <CardContent className="py-12 text-center">
-            <CheckCircle2 className="mx-auto h-16 w-16 text-[#15803D]" />
-            <h3 className="mt-4 text-lg font-bold text-[#0B2545]">Import Complete</h3>
-            <p className="mt-2 text-sm text-gray-500">
-              142 records processed: 118 updated, 24 new players added, 7 conflicts resolved.
-            </p>
-            <Button variant="accent" size="md" className="mt-6" onClick={() => setActiveStep(0)}>
-              Start New Import
-            </Button>
+            {isImporting ? (
+              <>
+                <Loader2 className="mx-auto h-16 w-16 animate-spin text-[#1D4ED8]" />
+                <h3 className="mt-4 text-lg font-bold text-[#0B2545]">Importing Records...</h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  Processing 142 records. Please wait.
+                </p>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="mx-auto h-16 w-16 text-[#15803D]" />
+                <h3 className="mt-4 text-lg font-bold text-[#0B2545]">Import Complete</h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  142 records processed: 118 updated, 24 new players added, 7 conflicts resolved.
+                </p>
+                <Button variant="accent" size="md" className="mt-6" onClick={() => setActiveStep(0)}>
+                  Start New Import
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -361,6 +440,17 @@ export default function ImportCentrePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Confirm dialog */}
+      <ConfirmDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        title="Confirm Import"
+        description="This will import 142 records, update 118 existing players, and create 24 new records. 7 conflicts will be resolved using your selections."
+        confirmLabel="Start Import"
+        variant="accent"
+        onConfirm={handleImportConfirm}
+      />
     </div>
   );
 }

@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { EmptyState } from "@/components/committee/shared/empty-state";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Search,
@@ -88,6 +93,15 @@ export default function DrillLibraryPage() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [ageFilter, setAgeFilter] = useState("All");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
+  const [loading, setLoading] = useState(true);
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Skeleton loading state
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     return MOCK_DRILLS.filter((d) => {
@@ -100,19 +114,31 @@ export default function DrillLibraryPage() {
     });
   }, [search, categoryFilter, ageFilter, difficultyFilter]);
 
+  const categoryOptions = [
+    { label: "All", value: "All" },
+    ...CATEGORIES.map((c) => ({ label: c, value: c })),
+  ];
+
+  const ageOptions = AGE_GROUPS.map((ag) => ({ label: ag, value: ag }));
+
+  const difficultyOptions = DIFFICULTIES.map((d) => ({
+    label: d === "All" ? "All" : `${d} Star${d !== "1" ? "s" : ""}`,
+    value: d,
+  }));
+
+  const handleAddDrill = () => {
+    addToast("Drill added successfully", "success");
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Drill Library</h2>
-          <p className="text-sm text-gray-500">{filtered.length} drills</p>
-        </div>
-        <Button variant="accent" size="sm">
+      <PageHeader title="Drill Library" subtitle={`${filtered.length} drills`}>
+        <Button variant="accent" size="sm" onClick={handleAddDrill}>
           <Plus className="mr-1.5 h-4 w-4" />
           Add Drill
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Search + Filters */}
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-end">
@@ -126,85 +152,73 @@ export default function DrillLibraryPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         </div>
         <div className="flex flex-wrap gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Category</label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              <option value="All">All</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Age Group</label>
-            <select
-              value={ageFilter}
-              onChange={(e) => setAgeFilter(e.target.value)}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {AGE_GROUPS.map((ag) => (
-                <option key={ag} value={ag}>{ag}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Difficulty</label>
-            <select
-              value={difficultyFilter}
-              onChange={(e) => setDifficultyFilter(e.target.value)}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {DIFFICULTIES.map((d) => (
-                <option key={d} value={d}>{d === "All" ? "All" : `${d} Star${d !== "1" ? "s" : ""}`}</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="Category"
+            options={categoryOptions}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          />
+          <Select
+            label="Age Group"
+            options={ageOptions}
+            value={ageFilter}
+            onChange={(e) => setAgeFilter(e.target.value)}
+          />
+          <Select
+            label="Difficulty"
+            options={difficultyOptions}
+            value={difficultyFilter}
+            onChange={(e) => setDifficultyFilter(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Drill Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((drill) => (
-          <Card key={drill.id} className="overflow-hidden hover:shadow-md transition-shadow">
-            {/* Diagram placeholder */}
-            <div className="flex h-32 items-center justify-center bg-gray-100">
-              <Target className="h-10 w-10 text-gray-300" />
-            </div>
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-semibold text-[#0B2545]">{drill.name}</h3>
-                <Badge variant={CATEGORY_VARIANT[drill.category]}>{drill.category}</Badge>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Target}
+          title="No drills found"
+          description="No drills match the current filters. Try adjusting your search or filter criteria."
+        />
+      ) : (
+        /* Drill Grid */
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((drill) => (
+            <Card key={drill.id} className="overflow-hidden hover:shadow-md transition-shadow">
+              {/* Diagram placeholder */}
+              <div className="flex h-32 items-center justify-center bg-gray-100">
+                <Target className="h-10 w-10 text-gray-300" />
               </div>
-              <div className="flex flex-wrap gap-1">
-                {drill.ageGroups.map((ag) => (
-                  <Badge key={ag} variant="info" className="text-[10px]">{ag}</Badge>
-                ))}
-              </div>
-              <DifficultyStars level={drill.difficulty} />
-              <p className="text-sm text-gray-600 line-clamp-2">{drill.description}</p>
-              <div className="flex gap-4 text-xs text-gray-500">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {drill.duration}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Users className="h-3 w-3" />
-                  {drill.playerCount} players
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-          <Target className="mb-3 h-10 w-10" />
-          <p className="text-sm">No drills match the current filters.</p>
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-[#0B2545]">{drill.name}</h3>
+                  <Badge variant={CATEGORY_VARIANT[drill.category]}>{drill.category}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {drill.ageGroups.map((ag) => (
+                    <Badge key={ag} variant="info" className="text-[10px]">{ag}</Badge>
+                  ))}
+                </div>
+                <DifficultyStars level={drill.difficulty} />
+                <p className="text-sm text-gray-600 line-clamp-2">{drill.description}</p>
+                <div className="flex gap-4 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {drill.duration}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    {drill.playerCount} players
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
     </div>

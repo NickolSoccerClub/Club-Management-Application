@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   PieChart,
   TrendingUp,
@@ -47,6 +50,13 @@ const MOCK_BUDGET: BudgetCategory[] = [
 
 export default function BudgetPage() {
   const [view, setView] = useState<"all" | "income" | "expense">("all");
+  const [loading, setLoading] = useState(true);
+  const { addToast } = useToastStore();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = view === "all" ? MOCK_BUDGET : MOCK_BUDGET.filter((b) => b.type === (view === "income" ? "Income" : "Expense"));
 
@@ -57,19 +67,32 @@ export default function BudgetPage() {
   const netBudgeted = totalBudgetedIncome - totalBudgetedExpense;
   const netActual = totalActualIncome - totalActualExpense;
 
+  const handleEditBudget = () => {
+    addToast("Budget updated", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Budget Management"
+          subtitle="Season 2026 budget tracking - budgeted vs actual"
+        />
+        <SkeletonTable rows={8} cols={6} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Budget Management</h2>
-          <p className="text-sm text-gray-500">Season 2026 budget tracking - budgeted vs actual</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
-          <Button variant="accent" size="sm"><Edit2 className="mr-1.5 h-4 w-4" /> Edit Budget</Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Budget Management"
+        subtitle="Season 2026 budget tracking - budgeted vs actual"
+      >
+        <Button variant="secondary" size="sm"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
+        <Button variant="accent" size="sm" onClick={handleEditBudget}><Edit2 className="mr-1.5 h-4 w-4" /> Edit Budget</Button>
+      </PageHeader>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

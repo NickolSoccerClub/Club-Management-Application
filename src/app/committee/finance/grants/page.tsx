@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Gift,
@@ -65,28 +70,64 @@ const STATUS_ICON: Record<GrantStatus, React.ElementType> = {
 
 const PIPELINE_STAGES: GrantStatus[] = ["Identified", "In Progress", "Submitted", "Approved", "Received"];
 
+const STATUS_OPTIONS = PIPELINE_STAGES.map((s) => ({ label: s, value: s }));
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function GrantsPage() {
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [statusValue, setStatusValue] = useState<string>(PIPELINE_STAGES[0]);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const totalReceived = MOCK_GRANTS.filter((g) => g.status === "Received").reduce((s, g) => s + g.amount, 0);
   const totalPipeline = MOCK_GRANTS.filter((g) => !["Received", "Rejected"].includes(g.status)).reduce((s, g) => s + g.amount, 0);
 
+  const handleSaveGrant = () => {
+    setConfirmSubmitOpen(true);
+  };
+
+  const handleConfirmSubmit = () => {
+    addToast("Grant application submitted", "success");
+    setShowForm(false);
+  };
+
+  const handleEditGrant = () => {
+    addToast("Grant updated", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <SkeletonCard />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Grant Tracking</h2>
-          <p className="text-sm text-gray-500">Track grant applications and funding opportunities</p>
-        </div>
+      <PageHeader title="Grant Tracking" subtitle="Track grant applications and funding opportunities">
         <Button variant="accent" size="sm" onClick={() => setShowForm(!showForm)}>
           <Plus className="mr-1.5 h-4 w-4" /> Add Grant
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Summary */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -159,12 +200,12 @@ export default function GrantsPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Input label="Amount ($)" type="number" placeholder="0.00" />
               <Input label="Deadline" type="date" />
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Status</label>
-                <select className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-                  {PIPELINE_STAGES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </div>
+              <Select
+                label="Status"
+                options={STATUS_OPTIONS}
+                value={statusValue}
+                onChange={(e) => setStatusValue(e.target.value)}
+              />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Purpose</label>
@@ -176,11 +217,22 @@ export default function GrantsPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="accent" size="sm">Save Grant</Button>
+              <Button variant="accent" size="sm" onClick={handleSaveGrant}>Save Grant</Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Confirm submit dialog */}
+      <ConfirmDialog
+        open={confirmSubmitOpen}
+        onOpenChange={(open) => setConfirmSubmitOpen(open)}
+        onConfirm={handleConfirmSubmit}
+        title="Submit Grant Application"
+        description="Are you sure you want to submit this grant application? Please verify all details are correct before submitting."
+        variant="accent"
+        confirmLabel="Submit"
+      />
 
       {/* Grants list */}
       <div className="space-y-3">
@@ -212,7 +264,10 @@ export default function GrantsPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-bold text-[#0B2545]">${grant.amount.toLocaleString()}</p>
-                    <button className="mt-2 flex items-center gap-1 text-xs text-[#1D4ED8] hover:underline">
+                    <button
+                      onClick={handleEditGrant}
+                      className="mt-2 flex items-center gap-1 text-xs text-[#1D4ED8] hover:underline"
+                    >
                       <ExternalLink className="h-3 w-3" /> View Details
                     </button>
                   </div>

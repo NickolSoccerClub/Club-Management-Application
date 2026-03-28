@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,12 @@ import {
   Clock,
   User,
   Calendar,
+  Trash2,
 } from "lucide-react";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 
 /* ------------------------------------------------------------------ */
 /*  Mock data                                                          */
@@ -83,26 +88,63 @@ const MOCK_APPROVED: Photo[] = Array.from({ length: 12 }, (_, i) => ({
 
 export default function MediaGalleryPage() {
   const [pending, setPending] = useState(MOCK_PENDING);
+  const [loading, setLoading] = useState(true);
+  const addToast = useToastStore((s) => s.addToast);
 
-  const handleModerate = (id: number, action: "approve" | "reject") => {
+  // Confirm dialog state
+  const [confirmReject, setConfirmReject] = useState<{ open: boolean; photoId: number | null }>({ open: false, photoId: null });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; photoId: number | null }>({ open: false, photoId: null });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleApprove = (id: number) => {
     setPending((prev) => prev.filter((p) => p.id !== id));
+    addToast("Photo approved", "success");
   };
+
+  const handleReject = (id: number) => {
+    setPending((prev) => prev.filter((p) => p.id !== id));
+    addToast("Photo rejected", "success");
+  };
+
+  const handleDelete = (id: number) => {
+    setPending((prev) => prev.filter((p) => p.id !== id));
+    addToast("Photo deleted", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Media Gallery">
+          <Button variant="accent" size="sm" disabled>
+            <ImageIcon className="mr-1.5 h-4 w-4" />
+            Upload Photos
+          </Button>
+        </PageHeader>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-[#0B2545]">Media Gallery</h2>
-          {pending.length > 0 && (
-            <Badge variant="warning">{pending.length} pending review</Badge>
-          )}
-        </div>
+      <PageHeader title="Media Gallery">
+        {pending.length > 0 && (
+          <Badge variant="warning">{pending.length} pending review</Badge>
+        )}
         <Button variant="accent" size="sm">
           <ImageIcon className="mr-1.5 h-4 w-4" />
           Upload Photos
         </Button>
-      </div>
+      </PageHeader>
 
       <Tabs defaultValue="queue">
         <TabsList>
@@ -132,7 +174,7 @@ export default function MediaGalleryPage() {
                       variant="ghost"
                       size="sm"
                       className="flex-1 border border-[#15803D]/20 text-[#15803D] hover:bg-[#15803D]/10"
-                      onClick={() => handleModerate(photo.id, "approve")}
+                      onClick={() => handleApprove(photo.id)}
                     >
                       <CheckCircle2 className="mr-1 h-4 w-4" />
                       Approve
@@ -141,10 +183,18 @@ export default function MediaGalleryPage() {
                       variant="ghost"
                       size="sm"
                       className="flex-1 border border-[#B91C1C]/20 text-[#B91C1C] hover:bg-[#B91C1C]/10"
-                      onClick={() => handleModerate(photo.id, "reject")}
+                      onClick={() => setConfirmReject({ open: true, photoId: photo.id })}
                     >
                       <XCircle className="mr-1 h-4 w-4" />
                       Reject
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="border border-[#B91C1C]/20 text-[#B91C1C] hover:bg-[#B91C1C]/10"
+                      onClick={() => setConfirmDelete({ open: true, photoId: photo.id })}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -185,6 +235,32 @@ export default function MediaGalleryPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Reject Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmReject.open}
+        onOpenChange={(open) => setConfirmReject({ open, photoId: open ? confirmReject.photoId : null })}
+        onConfirm={() => {
+          if (confirmReject.photoId !== null) handleReject(confirmReject.photoId);
+        }}
+        title="Reject Photo"
+        description="Are you sure you want to reject this photo? It will be removed from the moderation queue."
+        variant="danger"
+        confirmLabel="Reject"
+      />
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, photoId: open ? confirmDelete.photoId : null })}
+        onConfirm={() => {
+          if (confirmDelete.photoId !== null) handleDelete(confirmDelete.photoId);
+        }}
+        title="Delete Photo"
+        description="Are you sure you want to permanently delete this photo? This action cannot be undone."
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

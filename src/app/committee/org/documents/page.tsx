@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Upload,
   Search,
@@ -75,10 +79,18 @@ const FILE_COLOR: Record<FileType, string> = {
 /* ------------------------------------------------------------------ */
 
 export default function DocumentsPage() {
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["Policies", "Meeting Minutes"])
   );
+  const [deleteDoc, setDeleteDoc] = useState<Document | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleFolder = (folder: string) => {
     setExpandedFolders((prev) => {
@@ -115,19 +127,47 @@ export default function DocumentsPage() {
     return map;
   }, [allDocs]);
 
+  const handleUpload = () => {
+    addToast("Document uploaded", "success");
+  };
+
+  const handleConfirmDelete = () => {
+    addToast("Document deleted", "success");
+    setDeleteDoc(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Documents" subtitle={`${MOCK_DOCUMENTS.length} documents`}>
+          <Button variant="accent" size="sm" onClick={handleUpload}>
+            <Upload className="mr-1.5 h-4 w-4" />
+            Upload Document
+          </Button>
+        </PageHeader>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Documents</h2>
-          <p className="text-sm text-gray-500">{MOCK_DOCUMENTS.length} documents</p>
-        </div>
-        <Button variant="accent" size="sm">
+      <PageHeader title="Documents" subtitle={`${MOCK_DOCUMENTS.length} documents`}>
+        <Button variant="accent" size="sm" onClick={handleUpload}>
           <Upload className="mr-1.5 h-4 w-4" />
           Upload Document
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Search */}
       <div className="relative max-w-md">
@@ -231,7 +271,12 @@ export default function DocumentsPage() {
                           <Button variant="ghost" size="sm" className="h-8 px-2">
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="sm" className="h-8 px-2 text-[#B91C1C] hover:text-[#B91C1C] hover:bg-red-50">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-[#B91C1C] hover:text-[#B91C1C] hover:bg-red-50"
+                            onClick={() => setDeleteDoc(doc)}
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -250,6 +295,23 @@ export default function DocumentsPage() {
           );
         })}
       </div>
+
+      {/* Confirm delete dialog */}
+      <ConfirmDialog
+        open={!!deleteDoc}
+        onOpenChange={(open) => {
+          if (!open) setDeleteDoc(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Document"
+        description={
+          deleteDoc
+            ? `Are you sure you want to delete "${deleteDoc.name}"? This action cannot be undone.`
+            : ""
+        }
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

@@ -1,9 +1,16 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { StatCard } from "@/components/committee/shared/stat-card";
+import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/committee/shared/empty-state";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Upload,
   Send,
@@ -67,11 +74,26 @@ const STATUSES: GameStatus[] = ["Published", "Draft", "Cancelled"];
 /* ------------------------------------------------------------------ */
 
 export default function ScheduleManagementPage() {
+  const [isLoading, setIsLoading] = useState(true);
   const [ageFilter, setAgeFilter] = useState("All");
   const [roundFilter, setRoundFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showImport, setShowImport] = useState(false);
+
+  // Confirm dialog states
+  const [publishAllOpen, setPublishAllOpen] = useState(false);
+  const [publishSelectedOpen, setPublishSelectedOpen] = useState(false);
+  const [cancelSelectedOpen, setCancelSelectedOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ScheduleRow | null>(null);
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Simulated loading
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     return MOCK_SCHEDULE.filter((g) => {
@@ -106,25 +128,51 @@ export default function ScheduleManagementPage() {
     }
   };
 
+  /* -- Confirm handlers -- */
+
+  const handlePublishAll = () => {
+    addToast("All games published", "success");
+  };
+
+  const handlePublishSelected = () => {
+    addToast(`${selected.size} games published`, "success");
+    setSelected(new Set());
+  };
+
+  const handleCancelSelected = () => {
+    addToast(`${selected.size} games cancelled`, "success");
+    setSelected(new Set());
+  };
+
+  const handleDeleteGame = () => {
+    if (deleteTarget) {
+      addToast(`Game deleted: ${deleteTarget.home} vs ${deleteTarget.away}`, "success");
+      setDeleteTarget(null);
+    }
+  };
+
+  /* -- Select options -- */
+
+  const ageOptions = AGE_GROUPS.map((v) => ({ label: v, value: v }));
+  const roundOptions = ROUNDS.map((v) => ({ label: v, value: v }));
+  const statusOptions = ["All", ...STATUSES].map((v) => ({ label: v, value: v }));
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Schedule Management</h2>
-          <p className="text-sm text-gray-500">Manage game fixtures and publish schedules</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowImport(!showImport)}>
-            <Upload className="mr-1.5 h-4 w-4" />
-            Import Schedule
-          </Button>
-          <Button variant="accent" size="sm">
-            <Send className="mr-1.5 h-4 w-4" />
-            Publish All
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Schedule Management"
+        subtitle="Manage game fixtures and publish schedules"
+      >
+        <Button variant="secondary" size="sm" onClick={() => setShowImport(!showImport)}>
+          <Upload className="mr-1.5 h-4 w-4" />
+          Import Schedule
+        </Button>
+        <Button variant="accent" size="sm" onClick={() => setPublishAllOpen(true)}>
+          <Send className="mr-1.5 h-4 w-4" />
+          Publish All
+        </Button>
+      </PageHeader>
 
       {/* Import area */}
       {showImport && (
@@ -144,128 +192,203 @@ export default function ScheduleManagementPage() {
 
       {/* Stats bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Total Games", value: stats.total, icon: CalendarDays, color: "#1D4ED8", bg: "#EFF6FF" },
-          { label: "Published", value: stats.published, icon: CheckCircle2, color: "#15803D", bg: "#F0FDF4" },
-          { label: "Unpublished", value: stats.unpublished, icon: Clock, color: "#B45309", bg: "#FFFBEB" },
-          { label: "Cancelled", value: stats.cancelled, icon: XCircle, color: "#B91C1C", bg: "#FEF2F2" },
-        ].map((s) => (
-          <div key={s.label} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ backgroundColor: s.bg }}>
-              <s.icon className="h-5 w-5" style={{ color: s.color }} />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">{s.label}</p>
-              <p className="text-lg font-bold text-[#0B2545]">{s.value}</p>
-            </div>
-          </div>
-        ))}
+        <StatCard
+          label="Total Games"
+          value={stats.total}
+          icon={CalendarDays}
+          iconColor="text-[#1D4ED8]"
+          iconBg="bg-blue-50"
+        />
+        <StatCard
+          label="Published"
+          value={stats.published}
+          icon={CheckCircle2}
+          iconColor="text-[#15803D]"
+          iconBg="bg-[#F0FDF4]"
+        />
+        <StatCard
+          label="Unpublished"
+          value={stats.unpublished}
+          icon={Clock}
+          iconColor="text-[#B45309]"
+          iconBg="bg-[#FFFBEB]"
+        />
+        <StatCard
+          label="Cancelled"
+          value={stats.cancelled}
+          icon={XCircle}
+          iconColor="text-[#B91C1C]"
+          iconBg="bg-[#FEF2F2]"
+        />
       </div>
 
       {/* Filter row */}
       <div className="flex flex-wrap gap-3 rounded-lg border border-gray-200 bg-white p-4">
-        {[
-          { label: "Age Group", value: ageFilter, setter: setAgeFilter, options: AGE_GROUPS },
-          { label: "Round", value: roundFilter, setter: setRoundFilter, options: ROUNDS },
-          { label: "Status", value: statusFilter, setter: setStatusFilter, options: ["All", ...STATUSES] },
-        ].map((f) => (
-          <div key={f.label}>
-            <label className="mb-1 block text-xs font-medium text-gray-500">{f.label}</label>
-            <select
-              value={f.value}
-              onChange={(e) => f.setter(e.target.value)}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {f.options.map((o) => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </select>
-          </div>
-        ))}
+        <Select
+          label="Age Group"
+          value={ageFilter}
+          onChange={(e) => setAgeFilter(e.target.value)}
+          options={ageOptions}
+        />
+        <Select
+          label="Round"
+          value={roundFilter}
+          onChange={(e) => setRoundFilter(e.target.value)}
+          options={roundOptions}
+        />
+        <Select
+          label="Status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          options={statusOptions}
+        />
       </div>
 
       {/* Bulk actions */}
       {selected.size > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-[#1D4ED8]/20 bg-blue-50 px-4 py-3">
           <span className="text-sm font-medium text-[#1D4ED8]">{selected.size} selected</span>
-          <Button variant="accent" size="sm">Publish Selected</Button>
-          <Button variant="danger" size="sm">Cancel Selected</Button>
+          <Button variant="accent" size="sm" onClick={() => setPublishSelectedOpen(true)}>
+            Publish Selected
+          </Button>
+          <Button variant="danger" size="sm" onClick={() => setCancelSelectedOpen(true)}>
+            Cancel Selected
+          </Button>
         </div>
       )}
 
-      {/* Data table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
-              <th className="px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={selected.size === filtered.length && filtered.length > 0}
-                  onChange={toggleAll}
-                  className="rounded"
-                />
-              </th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Time</th>
-              <th className="px-4 py-3">Home</th>
-              <th className="px-4 py-3">Away</th>
-              <th className="px-4 py-3 hidden lg:table-cell">Venue</th>
-              <th className="px-4 py-3 hidden xl:table-cell">Field</th>
-              <th className="px-4 py-3 hidden md:table-cell">Age Group</th>
-              <th className="px-4 py-3 hidden md:table-cell">Round</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-gray-400">No games match the current filters.</td>
+      {/* Loading skeleton */}
+      {isLoading ? (
+        <SkeletonTable rows={8} cols={6} />
+      ) : (
+        /* Data table */
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.size === filtered.length && filtered.length > 0}
+                    onChange={toggleAll}
+                    className="rounded"
+                  />
+                </th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Time</th>
+                <th className="px-4 py-3">Home</th>
+                <th className="px-4 py-3">Away</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Venue</th>
+                <th className="px-4 py-3 hidden xl:table-cell">Field</th>
+                <th className="px-4 py-3 hidden md:table-cell">Age Group</th>
+                <th className="px-4 py-3 hidden md:table-cell">Round</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
               </tr>
-            ) : (
-              filtered.map((game, idx) => (
-                <tr
-                  key={game.id}
-                  className={cn(
-                    "border-t border-gray-100 transition-colors hover:bg-blue-50/40",
-                    idx % 2 === 1 && "bg-[#F8FAFC]",
-                    selected.has(game.id) && "bg-blue-50"
-                  )}
-                >
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(game.id)}
-                      onChange={() => toggleRow(game.id)}
-                      className="rounded"
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={11}>
+                    <EmptyState
+                      title="No games found"
+                      description="No games match the current filters. Try adjusting your filter criteria."
+                      className="border-0 rounded-none"
                     />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-600">{game.date}</td>
-                  <td className="px-4 py-3 text-gray-600">{game.time}</td>
-                  <td className="px-4 py-3 font-medium text-[#0B2545]">{game.home}</td>
-                  <td className="px-4 py-3 font-medium text-[#0B2545]">{game.away}</td>
-                  <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">{game.venue}</td>
-                  <td className="px-4 py-3 text-gray-500 hidden xl:table-cell">{game.field}</td>
-                  <td className="px-4 py-3 hidden md:table-cell"><Badge variant="info">{game.ageGroup}</Badge></td>
-                  <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{game.round}</td>
-                  <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[game.status]}>{game.status}</Badge></td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-[#B91C1C]">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                filtered.map((game, idx) => (
+                  <tr
+                    key={game.id}
+                    className={cn(
+                      "border-t border-gray-100 transition-colors hover:bg-blue-50/40",
+                      idx % 2 === 1 && "bg-[#F8FAFC]",
+                      selected.has(game.id) && "bg-blue-50"
+                    )}
+                  >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(game.id)}
+                        onChange={() => toggleRow(game.id)}
+                        className="rounded"
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">{game.date}</td>
+                    <td className="px-4 py-3 text-gray-600">{game.time}</td>
+                    <td className="px-4 py-3 font-medium text-[#0B2545]">{game.home}</td>
+                    <td className="px-4 py-3 font-medium text-[#0B2545]">{game.away}</td>
+                    <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">{game.venue}</td>
+                    <td className="px-4 py-3 text-gray-500 hidden xl:table-cell">{game.field}</td>
+                    <td className="px-4 py-3 hidden md:table-cell"><Badge variant="info">{game.ageGroup}</Badge></td>
+                    <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{game.round}</td>
+                    <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[game.status]}>{game.status}</Badge></td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-[#B91C1C]"
+                          onClick={() => setDeleteTarget(game)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Confirm dialogs */}
+      <ConfirmDialog
+        open={publishAllOpen}
+        onOpenChange={setPublishAllOpen}
+        title="Publish All Games"
+        description="Are you sure you want to publish all draft games? This will make them visible to players and parents."
+        confirmLabel="Publish All"
+        variant="accent"
+        onConfirm={handlePublishAll}
+      />
+
+      <ConfirmDialog
+        open={publishSelectedOpen}
+        onOpenChange={setPublishSelectedOpen}
+        title="Publish Selected Games"
+        description={`Are you sure you want to publish ${selected.size} selected game${selected.size === 1 ? "" : "s"}? This will make them visible to players and parents.`}
+        confirmLabel="Publish Selected"
+        variant="accent"
+        onConfirm={handlePublishSelected}
+      />
+
+      <ConfirmDialog
+        open={cancelSelectedOpen}
+        onOpenChange={setCancelSelectedOpen}
+        title="Cancel Selected Games"
+        description={`Are you sure you want to cancel ${selected.size} selected game${selected.size === 1 ? "" : "s"}? Affected teams will be notified.`}
+        confirmLabel="Cancel Games"
+        variant="danger"
+        onConfirm={handleCancelSelected}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete Game"
+        description={
+          deleteTarget
+            ? `Are you sure you want to delete the game between ${deleteTarget.home} and ${deleteTarget.away}? This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={handleDeleteGame}
+      />
     </div>
   );
 }

@@ -1,19 +1,26 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { Pagination } from "@/components/committee/shared/pagination";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/committee/shared/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   DollarSign,
   TrendingUp,
   Download,
   Search,
-  ChevronLeft,
-  ChevronRight,
+  Trash2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -58,6 +65,16 @@ const STATUS_VARIANT: Record<PaymentStatus, "success" | "warning" | "danger"> = 
 };
 
 /* ------------------------------------------------------------------ */
+/*  Zod schema                                                         */
+/* ------------------------------------------------------------------ */
+
+const incomeSchema = z.object({
+  description: z.string().min(3, "Description must be at least 3 characters"),
+  category: z.string().min(1, "Category is required"),
+  amount: z.number({ invalid_type_error: "Amount is required" }).positive("Amount must be a positive number"),
+});
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -67,7 +84,28 @@ export default function IncomePage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
   const perPage = 8;
+
+  // Form state
+  const [formDescription, setFormDescription] = useState("");
+  const [formCategory, setFormCategory] = useState(CATEGORIES[0] as string);
+  const [formAmount, setFormAmount] = useState("");
+  const [formPaidBy, setFormPaidBy] = useState("");
+  const [formDate, setFormDate] = useState("");
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Delete confirm dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Simulate loading
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     return MOCK_INCOME.filter((r) => {
@@ -84,23 +122,63 @@ export default function IncomePage() {
   const totalIncome = MOCK_INCOME.filter((r) => r.status === "Received").reduce((sum, r) => sum + r.amount, 0);
   const pendingIncome = MOCK_INCOME.filter((r) => r.status === "Pending" || r.status === "Overdue").reduce((sum, r) => sum + r.amount, 0);
 
+  const categoryOptions = CATEGORIES.map((c) => ({ label: c, value: c }));
+  const filterCategoryOptions = [{ label: "All", value: "All" }, ...categoryOptions];
+  const filterStatusOptions = [
+    { label: "All", value: "All" },
+    { label: "Received", value: "Received" },
+    { label: "Pending", value: "Pending" },
+    { label: "Overdue", value: "Overdue" },
+  ];
+
+  function handleFormSubmit() {
+    const parsed = incomeSchema.safeParse({
+      description: formDescription,
+      category: formCategory,
+      amount: formAmount ? parseFloat(formAmount) : undefined,
+    });
+
+    if (!parsed.success) {
+      const errors: Record<string, string> = {};
+      parsed.error.issues.forEach((issue) => {
+        const field = issue.path[0] as string;
+        errors[field] = issue.message;
+      });
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
+    setFormDescription("");
+    setFormCategory(CATEGORIES[0]);
+    setFormAmount("");
+    setFormPaidBy("");
+    setFormDate("");
+    setShowForm(false);
+    addToast("Income recorded", "success");
+  }
+
+  function handleDeleteClick(id: number) {
+    setDeleteTargetId(id);
+    setDeleteDialogOpen(true);
+  }
+
+  function handleDeleteConfirm() {
+    setDeleteTargetId(null);
+    addToast("Record deleted", "success");
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Income</h2>
-          <p className="text-sm text-gray-500">Track all club revenue and incoming payments</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm">
-            <Download className="mr-1.5 h-4 w-4" /> Export
-          </Button>
-          <Button variant="accent" size="sm" onClick={() => setShowForm(!showForm)}>
-            <Plus className="mr-1.5 h-4 w-4" /> Record Income
-          </Button>
-        </div>
-      </div>
+      <PageHeader title="Income" subtitle="Track all club revenue and incoming payments">
+        <Button variant="secondary" size="sm">
+          <Download className="mr-1.5 h-4 w-4" /> Export
+        </Button>
+        <Button variant="accent" size="sm" onClick={() => setShowForm(!showForm)}>
+          <Plus className="mr-1.5 h-4 w-4" /> Record Income
+        </Button>
+      </PageHeader>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -139,22 +217,46 @@ export default function IncomePage() {
           <CardHeader><CardTitle className="text-base">Record New Income</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Description" placeholder="e.g. Player Registration - J. Smith" />
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Category</label>
-                <select className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
+              <Input
+                label="Description"
+                placeholder="e.g. Player Registration - J. Smith"
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                error={formErrors.description}
+              />
+              <Select
+                label="Category"
+                options={categoryOptions}
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+                error={formErrors.category}
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Input label="Amount ($)" type="number" placeholder="0.00" />
-              <Input label="Paid By" placeholder="Name or organisation" />
-              <Input label="Date" type="date" />
+              <Input
+                label="Amount ($)"
+                type="number"
+                placeholder="0.00"
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+                error={formErrors.amount}
+              />
+              <Input
+                label="Paid By"
+                placeholder="Name or organisation"
+                value={formPaidBy}
+                onChange={(e) => setFormPaidBy(e.target.value)}
+              />
+              <Input
+                label="Date"
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="accent" size="sm">Save Record</Button>
+              <Button variant="accent" size="sm" onClick={handleFormSubmit}>Save Record</Button>
             </div>
           </CardContent>
         </Card>
@@ -164,73 +266,93 @@ export default function IncomePage() {
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-end">
         <div className="flex-1 relative">
           <Input placeholder="Search description or payer..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="pl-9" />
-          <Search className="pointer-events-none absolute mt-[-30px] ml-3 h-4 w-4 text-gray-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         </div>
         <div className="flex gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Category</label>
-            <select value={catFilter} onChange={(e) => { setCatFilter(e.target.value); setPage(1); }} className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-              <option>All</option>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Status</label>
-            <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-              <option>All</option>
-              <option>Received</option>
-              <option>Pending</option>
-              <option>Overdue</option>
-            </select>
-          </div>
+          <Select
+            label="Category"
+            options={filterCategoryOptions}
+            value={catFilter}
+            onChange={(e) => { setCatFilter(e.target.value); setPage(1); }}
+          />
+          <Select
+            label="Status"
+            options={filterStatusOptions}
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          />
         </div>
       </div>
 
       {/* Data table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Description</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Category</th>
-              <th className="px-4 py-3 hidden md:table-cell">Paid By</th>
-              <th className="px-4 py-3 text-right">Amount</th>
-              <th className="px-4 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.map((r, idx) => (
-              <tr key={r.id} className={cn("border-t border-gray-100 transition-colors hover:bg-blue-50/40", idx % 2 === 1 && "bg-[#F8FAFC]")}>
-                <td className="whitespace-nowrap px-4 py-3 text-gray-500">{r.date}</td>
-                <td className="px-4 py-3 font-medium text-[#0B2545]">{r.description}</td>
-                <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{r.category}</td>
-                <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{r.paidBy}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-[#15803D]">+${r.amount.toLocaleString()}</td>
-                <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>Showing {(page - 1) * perPage + 1}&#8211;{Math.min(page * perPage, filtered.length)} of {filtered.length}</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-              <button key={n} onClick={() => setPage(n)} className={cn("flex h-8 w-8 items-center justify-center rounded-md border text-sm", n === page ? "border-[#1D4ED8] bg-[#1D4ED8] text-white" : "border-gray-200 bg-white hover:bg-gray-50")}>{n}</button>
-            ))}
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">
-              <ChevronRight className="h-4 w-4" />
-            </button>
+      {isLoading ? (
+        <SkeletonTable rows={8} cols={6} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No income records found"
+          description="Try adjusting your search or filter criteria."
+          actionLabel="Clear Filters"
+          onAction={() => { setSearch(""); setCatFilter("All"); setStatusFilter("All"); }}
+        />
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 hidden sm:table-cell">Category</th>
+                  <th className="px-4 py-3 hidden md:table-cell">Paid By</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((r, idx) => (
+                  <tr key={r.id} className={cn("border-t border-gray-100 transition-colors hover:bg-blue-50/40", idx % 2 === 1 && "bg-[#F8FAFC]")}>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-500">{r.date}</td>
+                    <td className="px-4 py-3 font-medium text-[#0B2545]">{r.description}</td>
+                    <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{r.category}</td>
+                    <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{r.paidBy}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-[#15803D]">+${r.amount.toLocaleString()}</td>
+                    <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge></td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleDeleteClick(r.id)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-[#B91C1C]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+
+          {/* Pagination */}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={filtered.length}
+            perPage={perPage}
+            onPageChange={setPage}
+          />
+        </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => setDeleteDialogOpen(open)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Income Record"
+        description="Are you sure you want to delete this income record? This action cannot be undone."
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

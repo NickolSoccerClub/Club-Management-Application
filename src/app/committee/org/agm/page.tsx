@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Vote,
   Calendar,
@@ -85,7 +89,17 @@ const agmDate = "2026-11-14";
 /*  Position Card                                                      */
 /* ------------------------------------------------------------------ */
 
-function PositionCard({ position }: { position: AGMPosition }) {
+function PositionCard({
+  position,
+  onCastVote,
+  onCloseVoting,
+  onAddNominee,
+}: {
+  position: AGMPosition;
+  onCastVote: (positionTitle: string, nomineeName: string) => void;
+  onCloseVoting: (positionTitle: string) => void;
+  onAddNominee: (positionTitle: string) => void;
+}) {
   const [showWalkIn, setShowWalkIn] = useState(false);
 
   const maxVotes = Math.max(...position.nominees.map((n) => n.votes || 0), 1);
@@ -182,7 +196,12 @@ function PositionCard({ position }: { position: AGMPosition }) {
               {/* Cast Vote button */}
               {position.status === "Voting" && (
                 <div className="mt-2">
-                  <Button variant="accent" size="sm" className="w-full">
+                  <Button
+                    variant="accent"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => onCastVote(position.title, nominee.name)}
+                  >
                     Cast Vote
                   </Button>
                 </div>
@@ -194,7 +213,11 @@ function PositionCard({ position }: { position: AGMPosition }) {
         {/* Voting controls */}
         {position.status === "Voting" && (
           <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
-            <Button variant="danger" size="sm">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => onCloseVoting(position.title)}
+            >
               Close Voting for This Position
             </Button>
             <Button
@@ -223,7 +246,16 @@ function PositionCard({ position }: { position: AGMPosition }) {
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
               rows={2}
             />
-            <Button variant="accent" size="sm">Add Nominee</Button>
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => {
+                onAddNominee(position.title);
+                setShowWalkIn(false);
+              }}
+            >
+              Add Nominee
+            </Button>
           </div>
         )}
       </CardContent>
@@ -236,28 +268,73 @@ function PositionCard({ position }: { position: AGMPosition }) {
 /* ------------------------------------------------------------------ */
 
 export default function AGMPage() {
+  const [loading, setLoading] = useState(true);
+  const [confirmVote, setConfirmVote] = useState<{ position: string; nominee: string } | null>(null);
+  const [confirmCloseVoting, setConfirmCloseVoting] = useState<string | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
   const completed = MOCK_POSITIONS.filter((p) => p.status === "Completed");
   const voting = MOCK_POSITIONS.filter((p) => p.status === "Voting");
   const pending = MOCK_POSITIONS.filter((p) => p.status === "Pending");
 
+  const handleCastVote = (positionTitle: string, nomineeName: string) => {
+    setConfirmVote({ position: positionTitle, nominee: nomineeName });
+  };
+
+  const handleConfirmVote = () => {
+    addToast("Vote cast", "success");
+    setConfirmVote(null);
+  };
+
+  const handleCloseVoting = (positionTitle: string) => {
+    setConfirmCloseVoting(positionTitle);
+  };
+
+  const handleConfirmCloseVoting = () => {
+    addToast("Voting closed", "success");
+    setConfirmCloseVoting(null);
+  };
+
+  const handleAddNominee = (positionTitle: string) => {
+    addToast("Nominee added", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Annual General Meeting" subtitle={agmDate}>
+          <Badge
+            variant={agmStatus === "In Progress" ? "info" : agmStatus === "Completed" ? "success" : "default"}
+            className="text-sm px-3 py-1"
+          >
+            {agmStatus}
+          </Badge>
+        </PageHeader>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Annual General Meeting</h2>
-          <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
-            <Calendar className="h-3.5 w-3.5" />
-            {agmDate}
-          </p>
-        </div>
+      <PageHeader title="Annual General Meeting" subtitle={agmDate}>
         <Badge
           variant={agmStatus === "In Progress" ? "info" : agmStatus === "Completed" ? "success" : "default"}
           className="text-sm px-3 py-1"
         >
           {agmStatus}
         </Badge>
-      </div>
+      </PageHeader>
 
       {/* Pre-AGM controls */}
       <Card>
@@ -287,7 +364,13 @@ export default function AGMPage() {
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {voting.map((p) => (
-              <PositionCard key={p.id} position={p} />
+              <PositionCard
+                key={p.id}
+                position={p}
+                onCastVote={handleCastVote}
+                onCloseVoting={handleCloseVoting}
+                onAddNominee={handleAddNominee}
+              />
             ))}
           </div>
         </div>
@@ -302,7 +385,13 @@ export default function AGMPage() {
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {completed.map((p) => (
-              <PositionCard key={p.id} position={p} />
+              <PositionCard
+                key={p.id}
+                position={p}
+                onCastVote={handleCastVote}
+                onCloseVoting={handleCloseVoting}
+                onAddNominee={handleAddNominee}
+              />
             ))}
           </div>
         </div>
@@ -317,11 +406,51 @@ export default function AGMPage() {
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {pending.map((p) => (
-              <PositionCard key={p.id} position={p} />
+              <PositionCard
+                key={p.id}
+                position={p}
+                onCastVote={handleCastVote}
+                onCloseVoting={handleCloseVoting}
+                onAddNominee={handleAddNominee}
+              />
             ))}
           </div>
         </div>
       )}
+
+      {/* Confirm cast vote dialog */}
+      <ConfirmDialog
+        open={!!confirmVote}
+        onOpenChange={(open) => {
+          if (!open) setConfirmVote(null);
+        }}
+        onConfirm={handleConfirmVote}
+        title="Cast Vote"
+        description={
+          confirmVote
+            ? `Cast your vote for ${confirmVote.nominee} for ${confirmVote.position}?`
+            : ""
+        }
+        variant="accent"
+        confirmLabel="Cast Vote"
+      />
+
+      {/* Confirm close voting dialog */}
+      <ConfirmDialog
+        open={!!confirmCloseVoting}
+        onOpenChange={(open) => {
+          if (!open) setConfirmCloseVoting(null);
+        }}
+        onConfirm={handleConfirmCloseVoting}
+        title="Close Voting"
+        description={
+          confirmCloseVoting
+            ? `Close voting for ${confirmCloseVoting}? This cannot be undone.`
+            : ""
+        }
+        variant="accent"
+        confirmLabel="Close Voting"
+      />
     </div>
   );
 }

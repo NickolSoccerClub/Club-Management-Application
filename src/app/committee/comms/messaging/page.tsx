@@ -1,12 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Send,
@@ -78,13 +85,52 @@ const CHANNEL_ICON: Record<Channel, React.ElementType> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Zod validation schema                                              */
+/* ------------------------------------------------------------------ */
+
+const composeSchema = z.object({
+  subject: z.string().min(1, "Subject is required"),
+  body: z.string().min(10, "Message must be at least 10 characters"),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Recipient options                                                  */
+/* ------------------------------------------------------------------ */
+
+const RECIPIENT_OPTIONS = [
+  { label: "All Parents", value: "all-parents" },
+  { label: "All Coaches", value: "all-coaches" },
+  { label: "Nickol Thunder (U7)", value: "team-thunder" },
+  { label: "Nickol Lightning (U7)", value: "team-lightning" },
+  { label: "Nickol Storm (U9A)", value: "team-storm" },
+  { label: "Nickol Blaze (U9B)", value: "team-blaze" },
+  { label: "Nickol Titans (U11)", value: "team-titans" },
+  { label: "Nickol Hawks (U13)", value: "team-hawks" },
+  { label: "Nickol Eagles (U15)", value: "team-eagles" },
+  { label: "Nickol Wolves (U17)", value: "team-wolves" },
+  { label: "Individual (Search)", value: "individual" },
+];
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function MessagingPage() {
+  const [loading, setLoading] = useState(true);
   const [showCompose, setShowCompose] = useState(false);
   const [recipientType, setRecipientType] = useState("all-parents");
   const [channels, setChannels] = useState<Set<Channel>>(new Set(["Email"]));
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [errors, setErrors] = useState<{ subject?: string; body?: string }>({});
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
+  const [confirmScheduleOpen, setConfirmScheduleOpen] = useState(false);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleChannel = (ch: Channel) => {
     setChannels((prev) => {
@@ -97,6 +143,45 @@ export default function MessagingPage() {
 
   const filterByType = (type: MsgType | "all") =>
     type === "all" ? MOCK_MESSAGES : MOCK_MESSAGES.filter((m) => m.type === type);
+
+  const validateForm = () => {
+    const result = composeSchema.safeParse({ subject, body });
+    if (!result.success) {
+      const fieldErrors: { subject?: string; body?: string } = {};
+      result.error.issues.forEach((issue) => {
+        const field = issue.path[0] as "subject" | "body";
+        fieldErrors[field] = issue.message;
+      });
+      setErrors(fieldErrors);
+      return false;
+    }
+    setErrors({});
+    return true;
+  };
+
+  const handleSendClick = () => {
+    if (!validateForm()) return;
+    setConfirmSendOpen(true);
+  };
+
+  const handleScheduleClick = () => {
+    if (!validateForm()) return;
+    setConfirmScheduleOpen(true);
+  };
+
+  const handleConfirmSend = () => {
+    addToast("Message sent", "success");
+    setSubject("");
+    setBody("");
+    setShowCompose(false);
+  };
+
+  const handleConfirmSchedule = () => {
+    addToast("Message scheduled", "success");
+    setSubject("");
+    setBody("");
+    setShowCompose(false);
+  };
 
   const MessageRow = ({ msg }: { msg: SentMessage }) => (
     <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -129,19 +214,34 @@ export default function MessagingPage() {
     </div>
   );
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Messaging"
+          subtitle="Send announcements and messages to parents, coaches, and teams"
+        />
+        <div className="space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Messaging</h2>
-          <p className="text-sm text-gray-500">Send announcements and messages to parents, coaches, and teams</p>
-        </div>
+      <PageHeader
+        title="Messaging"
+        subtitle="Send announcements and messages to parents, coaches, and teams"
+      >
         <Button variant="accent" size="sm" onClick={() => setShowCompose(!showCompose)}>
           <Plus className="mr-1.5 h-4 w-4" />
           New Message
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Compose form */}
       {showCompose && (
@@ -150,41 +250,33 @@ export default function MessagingPage() {
             <CardTitle className="text-base">Compose Message</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Recipients</label>
-              <select
-                value={recipientType}
-                onChange={(e) => setRecipientType(e.target.value)}
-                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-              >
-                <option value="all-parents">All Parents</option>
-                <option value="all-coaches">All Coaches</option>
-                <option value="team-thunder">Nickol Thunder (U7)</option>
-                <option value="team-lightning">Nickol Lightning (U7)</option>
-                <option value="team-storm">Nickol Storm (U9A)</option>
-                <option value="team-blaze">Nickol Blaze (U9B)</option>
-                <option value="team-titans">Nickol Titans (U11)</option>
-                <option value="team-hawks">Nickol Hawks (U13)</option>
-                <option value="team-eagles">Nickol Eagles (U15)</option>
-                <option value="team-wolves">Nickol Wolves (U17)</option>
-                <option value="individual">Individual (Search)</option>
-              </select>
-            </div>
+            <Select
+              label="Recipients"
+              options={RECIPIENT_OPTIONS}
+              value={recipientType}
+              onChange={(e) => setRecipientType(e.target.value)}
+            />
 
             {recipientType === "individual" && (
               <Input label="Search Recipient" placeholder="Type name or email..." />
             )}
 
-            <Input label="Subject" placeholder="Message subject..." />
+            <Input
+              label="Subject"
+              placeholder="Message subject..."
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              error={errors.subject}
+            />
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Message</label>
-              <textarea
-                placeholder="Type your message here..."
-                rows={6}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-              />
-            </div>
+            <Textarea
+              label="Message"
+              placeholder="Type your message here..."
+              rows={6}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              error={errors.body}
+            />
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Send via</label>
@@ -213,7 +305,10 @@ export default function MessagingPage() {
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" size="sm" onClick={() => setShowCompose(false)}>Cancel</Button>
-              <Button variant="accent" size="sm">
+              <Button variant="secondary" size="sm" onClick={handleScheduleClick}>
+                Schedule
+              </Button>
+              <Button variant="accent" size="sm" onClick={handleSendClick}>
                 <Send className="mr-1.5 h-4 w-4" />
                 Send Message
               </Button>
@@ -221,6 +316,28 @@ export default function MessagingPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Confirm send dialog */}
+      <ConfirmDialog
+        open={confirmSendOpen}
+        onOpenChange={setConfirmSendOpen}
+        onConfirm={handleConfirmSend}
+        title="Send Message"
+        description="Are you sure you want to send this message now? This action cannot be undone."
+        variant="primary"
+        confirmLabel="Send"
+      />
+
+      {/* Confirm schedule dialog */}
+      <ConfirmDialog
+        open={confirmScheduleOpen}
+        onOpenChange={setConfirmScheduleOpen}
+        onConfirm={handleConfirmSchedule}
+        title="Schedule Message"
+        description="Are you sure you want to schedule this message for later delivery?"
+        variant="primary"
+        confirmLabel="Schedule"
+      />
 
       {/* Sent messages */}
       <Tabs defaultValue="all">

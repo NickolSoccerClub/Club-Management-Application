@@ -1,11 +1,19 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { Pagination } from "@/components/committee/shared/pagination";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/committee/shared/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   CreditCard,
@@ -68,6 +76,16 @@ const STATUS_ICON: Record<ApprovalStatus, React.ElementType> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Zod schema                                                         */
+/* ------------------------------------------------------------------ */
+
+const expenseSchema = z.object({
+  description: z.string().min(1, "Description is required"),
+  category: z.string().min(1, "Category is required"),
+  amount: z.number({ invalid_type_error: "Amount is required" }).positive("Amount must be a positive number"),
+});
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -76,6 +94,29 @@ export default function ExpensesPage() {
   const [catFilter, setCatFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const perPage = 8;
+
+  // Form state
+  const [formDescription, setFormDescription] = useState("");
+  const [formCategory, setFormCategory] = useState(CATEGORIES[0] as string);
+  const [formAmount, setFormAmount] = useState("");
+  const [formDate, setFormDate] = useState("");
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Confirm dialogs
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [confirmTargetId, setConfirmTargetId] = useState<number | null>(null);
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Simulate loading
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     return MOCK_EXPENSES.filter((r) => {
@@ -87,24 +128,76 @@ export default function ExpensesPage() {
     });
   }, [search, catFilter, statusFilter]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const paged = filtered.slice((page - 1) * perPage, page * perPage);
   const totalPaid = MOCK_EXPENSES.filter((r) => r.status === "Paid").reduce((s, r) => s + r.amount, 0);
   const pendingApproval = MOCK_EXPENSES.filter((r) => r.status === "Pending Approval").length;
+
+  const categoryOptions = CATEGORIES.map((c) => ({ label: c, value: c }));
+  const filterCategoryOptions = [{ label: "All", value: "All" }, ...categoryOptions];
+  const filterStatusOptions = [
+    { label: "All", value: "All" },
+    { label: "Paid", value: "Paid" },
+    { label: "Approved", value: "Approved" },
+    { label: "Pending Approval", value: "Pending Approval" },
+    { label: "Rejected", value: "Rejected" },
+  ];
+
+  function handleFormSubmit() {
+    const parsed = expenseSchema.safeParse({
+      description: formDescription,
+      category: formCategory,
+      amount: formAmount ? parseFloat(formAmount) : undefined,
+    });
+
+    if (!parsed.success) {
+      const errors: Record<string, string> = {};
+      parsed.error.issues.forEach((issue) => {
+        const field = issue.path[0] as string;
+        errors[field] = issue.message;
+      });
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
+    setFormDescription("");
+    setFormCategory(CATEGORIES[0]);
+    setFormAmount("");
+    setFormDate("");
+    setShowForm(false);
+    addToast("Expense submitted", "success");
+  }
+
+  function handleApproveClick(id: number) {
+    setConfirmTargetId(id);
+    setApproveDialogOpen(true);
+  }
+
+  function handleRejectClick(id: number) {
+    setConfirmTargetId(id);
+    setRejectDialogOpen(true);
+  }
+
+  function handleApproveConfirm() {
+    setConfirmTargetId(null);
+    addToast("Expense approved", "success");
+  }
+
+  function handleRejectConfirm() {
+    setConfirmTargetId(null);
+    addToast("Expense rejected", "success");
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Expenses</h2>
-          <p className="text-sm text-gray-500">Track expenses, upload receipts, and manage approvals</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
-          <Button variant="accent" size="sm" onClick={() => setShowForm(!showForm)}>
-            <Plus className="mr-1.5 h-4 w-4" /> Submit Expense
-          </Button>
-        </div>
-      </div>
+      <PageHeader title="Expenses" subtitle="Track expenses, upload receipts, and manage approvals">
+        <Button variant="secondary" size="sm"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
+        <Button variant="accent" size="sm" onClick={() => setShowForm(!showForm)}>
+          <Plus className="mr-1.5 h-4 w-4" /> Submit Expense
+        </Button>
+      </PageHeader>
 
       {/* Summary */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -143,17 +236,36 @@ export default function ExpensesPage() {
           <CardHeader><CardTitle className="text-base">Submit New Expense</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Description" placeholder="What was purchased..." />
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Category</label>
-                <select className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
+              <Input
+                label="Description"
+                placeholder="What was purchased..."
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                error={formErrors.description}
+              />
+              <Select
+                label="Category"
+                options={categoryOptions}
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+                error={formErrors.category}
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Amount ($)" type="number" placeholder="0.00" />
-              <Input label="Date" type="date" />
+              <Input
+                label="Amount ($)"
+                type="number"
+                placeholder="0.00"
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+                error={formErrors.amount}
+              />
+              <Input
+                label="Date"
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+              />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">Receipt Upload</label>
@@ -167,7 +279,7 @@ export default function ExpensesPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="accent" size="sm">Submit for Approval</Button>
+              <Button variant="accent" size="sm" onClick={handleFormSubmit}>Submit for Approval</Button>
             </div>
           </CardContent>
         </Card>
@@ -176,84 +288,123 @@ export default function ExpensesPage() {
       {/* Filters */}
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-end">
         <div className="flex-1 relative">
-          <Input placeholder="Search expenses..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-          <Search className="pointer-events-none absolute mt-[-30px] ml-3 h-4 w-4 text-gray-400" />
+          <Input placeholder="Search expenses..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="pl-9" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         </div>
         <div className="flex gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Category</label>
-            <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-              <option>All</option>
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Status</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-              <option>All</option>
-              <option>Paid</option>
-              <option>Approved</option>
-              <option>Pending Approval</option>
-              <option>Rejected</option>
-            </select>
-          </div>
+          <Select
+            label="Category"
+            options={filterCategoryOptions}
+            value={catFilter}
+            onChange={(e) => { setCatFilter(e.target.value); setPage(1); }}
+          />
+          <Select
+            label="Status"
+            options={filterStatusOptions}
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          />
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Description</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Category</th>
-              <th className="px-4 py-3 hidden md:table-cell">Submitted By</th>
-              <th className="px-4 py-3 text-right">Amount</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Receipt</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r, idx) => {
-              const Icon = STATUS_ICON[r.status];
-              return (
-                <tr key={r.id} className={cn("border-t border-gray-100 transition-colors hover:bg-blue-50/40", idx % 2 === 1 && "bg-[#F8FAFC]")}>
-                  <td className="whitespace-nowrap px-4 py-3 text-gray-500">{r.date}</td>
-                  <td className="px-4 py-3 font-medium text-[#0B2545]">{r.description}</td>
-                  <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{r.category}</td>
-                  <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{r.submittedBy}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-[#B91C1C]">-${r.amount.toLocaleString()}</td>
-                  <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge></td>
-                  <td className="px-4 py-3">
-                    {r.hasReceipt ? (
-                      <button className="rounded p-1.5 text-[#15803D] hover:bg-green-50">
-                        <Receipt className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <span className="text-xs text-gray-400">None</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {r.status === "Pending Approval" && (
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 text-xs text-[#15803D] hover:bg-green-50">Approve</Button>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs text-[#B91C1C] hover:bg-red-50">Reject</Button>
-                      </div>
-                    )}
-                    {r.status !== "Pending Approval" && (
-                      <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                    )}
-                  </td>
+      {isLoading ? (
+        <SkeletonTable rows={8} cols={8} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No expenses found"
+          description="Try adjusting your search or filter criteria."
+          actionLabel="Clear Filters"
+          onAction={() => { setSearch(""); setCatFilter("All"); setStatusFilter("All"); }}
+        />
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 hidden sm:table-cell">Category</th>
+                  <th className="px-4 py-3 hidden md:table-cell">Submitted By</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Receipt</th>
+                  <th className="px-4 py-3">Actions</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {paged.map((r, idx) => {
+                  const Icon = STATUS_ICON[r.status];
+                  return (
+                    <tr key={r.id} className={cn("border-t border-gray-100 transition-colors hover:bg-blue-50/40", idx % 2 === 1 && "bg-[#F8FAFC]")}>
+                      <td className="whitespace-nowrap px-4 py-3 text-gray-500">{r.date}</td>
+                      <td className="px-4 py-3 font-medium text-[#0B2545]">{r.description}</td>
+                      <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{r.category}</td>
+                      <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{r.submittedBy}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-medium text-[#B91C1C]">-${r.amount.toLocaleString()}</td>
+                      <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge></td>
+                      <td className="px-4 py-3">
+                        {r.hasReceipt ? (
+                          <button className="rounded p-1.5 text-[#15803D] hover:bg-green-50">
+                            <Receipt className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">None</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.status === "Pending Approval" && (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-[#15803D] hover:bg-green-50" onClick={() => handleApproveClick(r.id)}>Approve</Button>
+                            <Button variant="ghost" size="sm" className="h-7 text-xs text-[#B91C1C] hover:bg-red-50" onClick={() => handleRejectClick(r.id)}>Reject</Button>
+                          </div>
+                        )}
+                        {r.status !== "Pending Approval" && (
+                          <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={filtered.length}
+            perPage={perPage}
+            onPageChange={setPage}
+          />
+        </>
+      )}
+
+      {/* Approve confirmation dialog */}
+      <ConfirmDialog
+        open={approveDialogOpen}
+        onOpenChange={(open) => setApproveDialogOpen(open)}
+        onConfirm={handleApproveConfirm}
+        title="Approve Expense"
+        description="Are you sure you want to approve this expense? This will mark it for payment."
+        variant="primary"
+        confirmLabel="Approve"
+      />
+
+      {/* Reject confirmation dialog */}
+      <ConfirmDialog
+        open={rejectDialogOpen}
+        onOpenChange={(open) => setRejectDialogOpen(open)}
+        onConfirm={handleRejectConfirm}
+        title="Reject Expense"
+        description="Are you sure you want to reject this expense? The submitter will be notified."
+        variant="danger"
+        confirmLabel="Reject"
+      />
     </div>
   );
 }

@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Calendar,
@@ -17,6 +21,8 @@ import {
   ChevronUp,
   CheckSquare,
   ClipboardList,
+  Loader2,
+  Trash2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -115,9 +121,25 @@ const MOCK_MEETINGS: Meeting[] = [
 /*  Meeting Card                                                       */
 /* ------------------------------------------------------------------ */
 
-function MeetingCard({ meeting }: { meeting: Meeting }) {
+function MeetingCard({
+  meeting,
+  onDelete,
+  onFinalize,
+  onApprove,
+}: {
+  meeting: Meeting;
+  onDelete: (meeting: Meeting) => void;
+  onFinalize: (meeting: Meeting) => void;
+  onApprove: (meeting: Meeting) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const isUpcoming = meeting.type === "upcoming";
+
+  const handleGenerateAI = () => {
+    setAiLoading(true);
+    setTimeout(() => setAiLoading(false), 1500);
+  };
 
   return (
     <Card className={cn(isUpcoming && "border-[#1D4ED8]/30")}>
@@ -172,16 +194,61 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
                 <FileText className="mr-1.5 h-3.5 w-3.5" />
                 View Agenda
               </Button>
-              <Button variant="secondary" size="sm">
-                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[#1D4ED8]" />
-                Generate Agenda with AI
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={aiLoading}
+                onClick={handleGenerateAI}
+              >
+                {aiLoading ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[#1D4ED8]" />
+                )}
+                {aiLoading ? "Generating..." : "Generate with AI"}
+              </Button>
+              {meeting.agendaStatus === "Draft" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onFinalize(meeting)}
+                >
+                  Finalize Agenda
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onDelete(meeting)}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5 text-red-500" />
+                Delete
               </Button>
             </>
           ) : (
-            <Button variant="secondary" size="sm">
-              <FileText className="mr-1.5 h-3.5 w-3.5" />
-              View Minutes
-            </Button>
+            <>
+              <Button variant="secondary" size="sm">
+                <FileText className="mr-1.5 h-3.5 w-3.5" />
+                View Minutes
+              </Button>
+              {meeting.minutesStatus === "Draft" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onApprove(meeting)}
+                >
+                  Approve Minutes
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onDelete(meeting)}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5 text-red-500" />
+                Delete
+              </Button>
+            </>
           )}
           <button
             onClick={() => setExpanded(!expanded)}
@@ -239,19 +306,71 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
 /* ------------------------------------------------------------------ */
 
 export default function MeetingsPage() {
+  const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
+  const [pendingMeeting, setPendingMeeting] = useState<Meeting | null>(null);
+  const [pendingAction, setPendingAction] = useState<"delete" | "finalize" | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
   const upcoming = MOCK_MEETINGS.filter((m) => m.type === "upcoming");
   const past = MOCK_MEETINGS.filter((m) => m.type === "past");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleDeleteClick = (meeting: Meeting) => {
+    setPendingMeeting(meeting);
+    setPendingAction("delete");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    addToast("Meeting deleted", "success");
+    setPendingMeeting(null);
+    setPendingAction(null);
+  };
+
+  const handleFinalizeClick = (meeting: Meeting) => {
+    setPendingMeeting(meeting);
+    setPendingAction("finalize");
+    setFinalizeDialogOpen(true);
+  };
+
+  const handleFinalizeConfirm = () => {
+    addToast("Agenda finalized", "success");
+    setPendingMeeting(null);
+    setPendingAction(null);
+  };
+
+  const handleApprove = () => {
+    addToast("Minutes approved", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Committee Meetings" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold text-[#0B2545]">Committee Meetings</h2>
+      <PageHeader title="Committee Meetings">
         <Button variant="accent" size="sm">
           <Plus className="mr-1.5 h-4 w-4" />
           Schedule Meeting
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Upcoming */}
       <div>
@@ -261,7 +380,13 @@ export default function MeetingsPage() {
         </h3>
         <div className="space-y-3">
           {upcoming.map((m) => (
-            <MeetingCard key={m.id} meeting={m} />
+            <MeetingCard
+              key={m.id}
+              meeting={m}
+              onDelete={handleDeleteClick}
+              onFinalize={handleFinalizeClick}
+              onApprove={handleApprove}
+            />
           ))}
         </div>
       </div>
@@ -274,10 +399,50 @@ export default function MeetingsPage() {
         </h3>
         <div className="space-y-3">
           {past.map((m) => (
-            <MeetingCard key={m.id} meeting={m} />
+            <MeetingCard
+              key={m.id}
+              meeting={m}
+              onDelete={handleDeleteClick}
+              onFinalize={handleFinalizeClick}
+              onApprove={handleApprove}
+            />
           ))}
         </div>
       </div>
+
+      {/* Confirm dialog for delete */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setPendingMeeting(null);
+            setPendingAction(null);
+          }
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Meeting"
+        description={`Are you sure you want to delete "${pendingMeeting?.title ?? "this meeting"}"? This action cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete"
+      />
+
+      {/* Confirm dialog for finalize agenda */}
+      <ConfirmDialog
+        open={finalizeDialogOpen}
+        onOpenChange={(open) => {
+          setFinalizeDialogOpen(open);
+          if (!open) {
+            setPendingMeeting(null);
+            setPendingAction(null);
+          }
+        }}
+        onConfirm={handleFinalizeConfirm}
+        title="Finalize Agenda"
+        description={`Are you sure you want to finalize the agenda for "${pendingMeeting?.title ?? "this meeting"}"? Once finalized, members will be notified.`}
+        variant="danger"
+        confirmLabel="Finalize"
+      />
     </div>
   );
 }

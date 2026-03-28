@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { EmptyState } from "@/components/committee/shared/empty-state";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Plus,
   Search,
@@ -55,6 +61,11 @@ const CONDITION_VARIANT: Record<Condition, "success" | "warning" | "danger"> = {
 
 const CATEGORIES: EquipmentCategory[] = ["Balls", "Goals", "Cones/Markers", "Bibs", "First Aid", "Other"];
 
+const CATEGORY_OPTIONS = [
+  { label: "All Categories", value: "All" },
+  ...CATEGORIES.map((c) => ({ label: c, value: c })),
+];
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -62,6 +73,14 @@ const CATEGORIES: EquipmentCategory[] = ["Balls", "Goals", "Cones/Markers", "Bib
 export default function EquipmentInventoryPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<EquipmentItem | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     return MOCK_ITEMS.filter((item) => {
@@ -74,16 +93,42 @@ export default function EquipmentInventoryPage() {
 
   const lowStock = MOCK_ITEMS.filter((item) => item.quantity < item.minStock);
 
+  const handleAdd = () => {
+    addToast("Item added", "success");
+  };
+
+  const handleEdit = () => {
+    addToast("Stock updated", "success");
+  };
+
+  const handleDeleteConfirm = () => {
+    addToast("Item deleted", "success");
+    setDeleteTarget(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Equipment Inventory">
+          <Button variant="accent" size="sm" disabled>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add Item
+          </Button>
+        </PageHeader>
+        <SkeletonTable rows={8} cols={7} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold text-[#0B2545]">Equipment Inventory</h2>
-        <Button variant="accent" size="sm">
+      <PageHeader title="Equipment Inventory">
+        <Button variant="accent" size="sm" onClick={handleAdd}>
           <Plus className="mr-1.5 h-4 w-4" />
           Add Item
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Low Stock Alerts */}
       {lowStock.length > 0 && (
@@ -124,43 +169,38 @@ export default function EquipmentInventoryPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Category</label>
-          <select
+          <Select
+            label="Category"
+            options={CATEGORY_OPTIONS}
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-          >
-            <option value="All">All Categories</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          />
         </div>
       </div>
 
       {/* Inventory Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
-              <th className="px-4 py-3">Item</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Category</th>
-              <th className="px-4 py-3">Qty</th>
-              <th className="px-4 py-3">Condition</th>
-              <th className="px-4 py-3 hidden md:table-cell">Assigned To</th>
-              <th className="px-4 py-3 hidden lg:table-cell">Last Checked</th>
-              <th className="px-4 py-3 hidden xl:table-cell">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
-                  No equipment items match the current filters.
-                </td>
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No equipment found"
+          description="No equipment items match the current filters."
+          icon={Package}
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
+                <th className="px-4 py-3">Item</th>
+                <th className="px-4 py-3 hidden sm:table-cell">Category</th>
+                <th className="px-4 py-3">Qty</th>
+                <th className="px-4 py-3">Condition</th>
+                <th className="px-4 py-3 hidden md:table-cell">Assigned To</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Last Checked</th>
+                <th className="px-4 py-3 hidden xl:table-cell">Notes</th>
               </tr>
-            ) : (
-              filtered.map((item, idx) => (
+            </thead>
+            <tbody>
+              {filtered.map((item, idx) => (
                 <tr
                   key={item.id}
                   className={cn(
@@ -195,11 +235,22 @@ export default function EquipmentInventoryPage() {
                     {item.notes || "-"}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Equipment Item"
+        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

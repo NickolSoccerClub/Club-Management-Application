@@ -1,11 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { useToastStore } from "@/lib/stores/toast-store";
+import { z } from "zod";
 import {
   Plus,
   CalendarDays,
@@ -14,6 +21,16 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  Zod validation                                                     */
+/* ------------------------------------------------------------------ */
+
+const eventSchema = z.object({
+  name: z.string().min(1, "Event name is required"),
+  date: z.string().min(1, "Date is required"),
+  location: z.string().min(1, "Location is required"),
+});
 
 /* ------------------------------------------------------------------ */
 /*  Mock data                                                          */
@@ -56,6 +73,13 @@ const STATUS_VARIANT: Record<EventStatus, "info" | "success" | "default"> = {
   Completed: "default",
 };
 
+const EVENT_TYPE_OPTIONS = [
+  { label: "Training", value: "Training" },
+  { label: "Social", value: "Social" },
+  { label: "Fundraiser", value: "Fundraiser" },
+  { label: "AGM", value: "AGM" },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Calendar helper                                                    */
 /* ------------------------------------------------------------------ */
@@ -80,23 +104,96 @@ export default function EventsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [calMonth, setCalMonth] = useState(3); // April = 3 (0-indexed)
   const [calYear] = useState(2026);
+  const [loading, setLoading] = useState(true);
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Form state
+  const [formName, setFormName] = useState("");
+  const [formDate, setFormDate] = useState("");
+  const [formTime, setFormTime] = useState("");
+  const [formLocation, setFormLocation] = useState("");
+  const [formType, setFormType] = useState("Training");
+  const [formDescription, setFormDescription] = useState("");
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Confirm dialog state
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const days = getCalendarDays(calYear, calMonth);
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+  const handleCreateEvent = () => {
+    const result = eventSchema.safeParse({
+      name: formName,
+      date: formDate,
+      location: formLocation,
+    });
+
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        errors[issue.path[0] as string] = issue.message;
+      });
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
+    addToast("Event created", "success");
+    setShowCreate(false);
+    setFormName("");
+    setFormDate("");
+    setFormTime("");
+    setFormLocation("");
+    setFormType("Training");
+    setFormDescription("");
+  };
+
+  const handleCancelEvent = () => {
+    addToast("Event cancelled", "success");
+    setSelectedEventId(null);
+  };
+
+  const handleDeleteEvent = () => {
+    addToast("Event deleted", "success");
+    setSelectedEventId(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Events"
+          subtitle="Manage club events, training sessions, and social activities"
+        />
+        <div className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Events</h2>
-          <p className="text-sm text-gray-500">Manage club events, training sessions, and social activities</p>
-        </div>
+      <PageHeader
+        title="Events"
+        subtitle="Manage club events, training sessions, and social activities"
+      >
         <Button variant="accent" size="sm" onClick={() => setShowCreate(!showCreate)}>
           <Plus className="mr-1.5 h-4 w-4" />
           Create Event
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Create Event form */}
       {showCreate && (
@@ -105,22 +202,42 @@ export default function EventsPage() {
             <CardTitle className="text-base">Create New Event</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input label="Event Name" placeholder="Enter event name..." />
+            <Input
+              label="Event Name"
+              placeholder="Enter event name..."
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              error={formErrors.name}
+            />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Input label="Date" type="date" />
-              <Input label="Time" type="time" />
-              <Input label="Location" placeholder="Venue name..." />
+              <Input
+                label="Date"
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+                error={formErrors.date}
+              />
+              <Input
+                label="Time"
+                type="time"
+                value={formTime}
+                onChange={(e) => setFormTime(e.target.value)}
+              />
+              <Input
+                label="Location"
+                placeholder="Venue name..."
+                value={formLocation}
+                onChange={(e) => setFormLocation(e.target.value)}
+                error={formErrors.location}
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Event Type</label>
-                <select className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-                  <option>Training</option>
-                  <option>Social</option>
-                  <option>Fundraiser</option>
-                  <option>AGM</option>
-                </select>
-              </div>
+              <Select
+                label="Event Type"
+                options={EVENT_TYPE_OPTIONS}
+                value={formType}
+                onChange={(e) => setFormType(e.target.value)}
+              />
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">RSVP Required</label>
                 <div className="flex h-10 items-center gap-3">
@@ -131,17 +248,16 @@ export default function EventsPage() {
                 </div>
               </div>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Description</label>
-              <textarea
-                rows={3}
-                placeholder="Event description..."
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-              />
-            </div>
+            <Textarea
+              label="Description"
+              rows={3}
+              placeholder="Event description..."
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+            />
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowCreate(false)}>Cancel</Button>
-              <Button variant="accent" size="sm">Create Event</Button>
+              <Button variant="accent" size="sm" onClick={handleCreateEvent}>Create Event</Button>
             </div>
           </CardContent>
         </Card>
@@ -229,6 +345,30 @@ export default function EventsPage() {
                       <p className="text-xs text-gray-400">RSVPs</p>
                     </div>
                     <Button variant="ghost" size="sm">View</Button>
+                    {event.status === "Upcoming" && (
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedEventId(event.id);
+                            setCancelDialogOpen(true);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedEventId(event.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -236,6 +376,27 @@ export default function EventsPage() {
           ))}
         </div>
       </div>
+
+      {/* Confirm Dialogs */}
+      <ConfirmDialog
+        open={cancelDialogOpen}
+        onOpenChange={(open) => setCancelDialogOpen(open)}
+        onConfirm={handleCancelEvent}
+        title="Cancel Event"
+        description="Are you sure you want to cancel this event? Attendees will be notified."
+        variant="danger"
+        confirmLabel="Cancel Event"
+      />
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => setDeleteDialogOpen(open)}
+        onConfirm={handleDeleteEvent}
+        title="Delete Event"
+        description="Are you sure you want to delete this event? This action cannot be undone."
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

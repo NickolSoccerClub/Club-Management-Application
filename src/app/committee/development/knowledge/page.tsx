@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Upload,
   FileText,
@@ -60,22 +64,57 @@ const STATUS_ICON: Record<DocStatus, React.ElementType> = {
 
 export default function KnowledgeBasePage() {
   const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<KBDocument | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleUpload = () => {
+    addToast("Document uploaded", "success");
+  };
+
+  const handleDeleteConfirm = () => {
+    addToast("Document deleted", "success");
+    setDeleteTarget(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Knowledge Base"
+          subtitle="Documents uploaded here are processed and made available to Coach Niko AI"
+        >
+          <Button variant="accent" size="sm" disabled>
+            <Upload className="mr-1.5 h-4 w-4" />
+            Upload Document
+          </Button>
+        </PageHeader>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Knowledge Base</h2>
-          <p className="text-sm text-gray-500">
-            Documents uploaded here are processed and made available to Coach Niko AI
-          </p>
-        </div>
-        <Button variant="accent" size="sm">
+      <PageHeader
+        title="Knowledge Base"
+        subtitle="Documents uploaded here are processed and made available to Coach Niko AI"
+      >
+        <Button variant="accent" size="sm" onClick={handleUpload}>
           <Upload className="mr-1.5 h-4 w-4" />
           Upload Document
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Upload Area */}
       <div
@@ -206,7 +245,7 @@ export default function KnowledgeBasePage() {
                     <Eye className="mr-1.5 h-3.5 w-3.5" />
                     Preview
                   </Button>
-                  <Button variant="danger" size="sm">
+                  <Button variant="danger" size="sm" onClick={() => setDeleteTarget(doc)}>
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                     Delete
                   </Button>
@@ -216,6 +255,17 @@ export default function KnowledgeBasePage() {
           );
         })}
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Document"
+        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

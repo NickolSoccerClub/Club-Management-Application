@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
+import { z } from "zod";
 import {
   Plus,
   Handshake,
@@ -15,7 +21,18 @@ import {
   ExternalLink,
   Edit2,
   Mail,
+  Trash2,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  Zod validation schema                                              */
+/* ------------------------------------------------------------------ */
+
+const sponsorFormSchema = z.object({
+  companyName: z.string().min(1, "Company name is required"),
+  contactName: z.string().min(1, "Contact name is required"),
+  tier: z.string().min(1, "Tier is required"),
+});
 
 /* ------------------------------------------------------------------ */
 /*  Mock data                                                          */
@@ -60,29 +77,98 @@ const STATUS_VARIANT: Record<SponsorStatus, "success" | "warning" | "danger"> = 
   Expired: "danger",
 };
 
+const TIER_OPTIONS = [
+  { label: "Platinum", value: "Platinum" },
+  { label: "Gold", value: "Gold" },
+  { label: "Silver", value: "Silver" },
+  { label: "Bronze", value: "Bronze" },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function SponsorshipPage() {
   const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [sponsorToRemove, setSponsorToRemove] = useState<Sponsor | null>(null);
+  const { addToast } = useToastStore();
+
+  // Form state
+  const [companyName, setCompanyName] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [tier, setTier] = useState("");
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const totalValue = MOCK_SPONSORS.filter((s) => s.status === "Active").reduce((sum, s) => sum + s.amount, 0);
   const activeCount = MOCK_SPONSORS.filter((s) => s.status === "Active").length;
   const renewalCount = MOCK_SPONSORS.filter((s) => s.status === "Pending Renewal").length;
 
+  const handleSaveSponsor = () => {
+    const result = sponsorFormSchema.safeParse({ companyName, contactName, tier });
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        errors[issue.path[0] as string] = issue.message;
+      });
+      setFormErrors(errors);
+      return;
+    }
+    setFormErrors({});
+    addToast("Sponsor added", "success");
+    setShowForm(false);
+    setCompanyName("");
+    setContactName("");
+    setTier("");
+  };
+
+  const handleEditSponsor = () => {
+    addToast("Sponsor updated", "success");
+  };
+
+  const handleRemoveSponsor = (sponsor: Sponsor) => {
+    setSponsorToRemove(sponsor);
+    setConfirmRemoveOpen(true);
+  };
+
+  const confirmRemoveSponsor = () => {
+    addToast("Sponsor removed", "success");
+    setSponsorToRemove(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Sponsorship Management"
+          subtitle="Manage sponsors, contracts, and partnership details"
+        />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Sponsorship Management</h2>
-          <p className="text-sm text-gray-500">Manage sponsors, contracts, and partnership details</p>
-        </div>
+      <PageHeader
+        title="Sponsorship Management"
+        subtitle="Manage sponsors, contracts, and partnership details"
+      >
         <Button variant="accent" size="sm" onClick={() => setShowForm(!showForm)}>
           <Plus className="mr-1.5 h-4 w-4" /> Add Sponsor
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Summary */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -121,16 +207,21 @@ export default function SponsorshipPage() {
           <CardHeader><CardTitle className="text-base">Add New Sponsor</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Company Name" placeholder="Sponsor name..." />
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Tier</label>
-                <select className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30">
-                  <option>Platinum</option>
-                  <option>Gold</option>
-                  <option>Silver</option>
-                  <option>Bronze</option>
-                </select>
-              </div>
+              <Input
+                label="Company Name"
+                placeholder="Sponsor name..."
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                error={formErrors.companyName}
+              />
+              <Select
+                label="Tier"
+                options={TIER_OPTIONS}
+                placeholder="Select tier..."
+                value={tier}
+                onChange={(e) => setTier(e.target.value)}
+                error={formErrors.tier}
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Input label="Annual Amount ($)" type="number" placeholder="0.00" />
@@ -138,7 +229,13 @@ export default function SponsorshipPage() {
               <Input label="Contract End" type="date" />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Contact Name" placeholder="Primary contact..." />
+              <Input
+                label="Contact Name"
+                placeholder="Primary contact..."
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                error={formErrors.contactName}
+              />
               <Input label="Contact Email" type="email" placeholder="email@company.com" />
             </div>
             <div>
@@ -152,21 +249,21 @@ export default function SponsorshipPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="accent" size="sm">Save Sponsor</Button>
+              <Button variant="accent" size="sm" onClick={handleSaveSponsor}>Save Sponsor</Button>
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Sponsor cards by tier */}
-      {(["Platinum", "Gold", "Silver", "Bronze"] as Tier[]).map((tier) => {
-        const tierSponsors = MOCK_SPONSORS.filter((s) => s.tier === tier);
+      {(["Platinum", "Gold", "Silver", "Bronze"] as Tier[]).map((tierName) => {
+        const tierSponsors = MOCK_SPONSORS.filter((s) => s.tier === tierName);
         if (tierSponsors.length === 0) return null;
 
         return (
-          <div key={tier}>
+          <div key={tierName}>
             <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gray-500">
-              <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", TIER_COLORS[tier])}>{tier}</span>
+              <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", TIER_COLORS[tierName])}>{tierName}</span>
               <span>{tierSponsors.length} sponsor{tierSponsors.length !== 1 ? "s" : ""}</span>
             </h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -191,7 +288,10 @@ export default function SponsorshipPage() {
                         </p>
                       </div>
                       <div className="mt-3 flex gap-1">
-                        <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
+                        <button
+                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]"
+                          onClick={handleEditSponsor}
+                        >
                           <Edit2 className="h-4 w-4" />
                         </button>
                         <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
@@ -199,6 +299,12 @@ export default function SponsorshipPage() {
                         </button>
                         <button className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#1D4ED8]">
                           <ExternalLink className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#B91C1C]"
+                          onClick={() => handleRemoveSponsor(sponsor)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
@@ -209,6 +315,20 @@ export default function SponsorshipPage() {
           </div>
         );
       })}
+
+      {/* Confirm delete dialog */}
+      <ConfirmDialog
+        open={confirmRemoveOpen}
+        onOpenChange={(open) => {
+          setConfirmRemoveOpen(open);
+          if (!open) setSponsorToRemove(null);
+        }}
+        onConfirm={confirmRemoveSponsor}
+        title="Remove Sponsor"
+        description={`Are you sure you want to remove ${sponsorToRemove?.name ?? "this sponsor"}? This action cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

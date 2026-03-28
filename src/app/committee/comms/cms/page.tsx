@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Image,
   Type,
@@ -47,17 +51,39 @@ const CMS_SECTIONS: CMSSection[] = [
 export default function WebsiteCMSPage() {
   const [previewMode, setPreviewMode] = useState(false);
   const [expanded, setExpanded] = useState<string | null>("hero");
+  const [loading, setLoading] = useState(true);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggle = (id: string) => setExpanded((p) => (p === id ? null : id));
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Website Content Management"
+          subtitle="Edit content displayed on the public-facing website"
+        />
+        <div className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Website Content Management</h2>
-          <p className="text-sm text-gray-500">Edit content displayed on the public-facing website</p>
-        </div>
+      <PageHeader
+        title="Website Content Management"
+        subtitle="Edit content displayed on the public-facing website"
+      >
         <button
           onClick={() => setPreviewMode(!previewMode)}
           className={cn(
@@ -70,7 +96,7 @@ export default function WebsiteCMSPage() {
           {previewMode ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           Preview Mode {previewMode ? "On" : "Off"}
         </button>
-      </div>
+      </PageHeader>
 
       {/* CMS section cards */}
       <div className="space-y-4">
@@ -118,7 +144,7 @@ export default function WebsiteCMSPage() {
                       <Input label="Call to Action Text" defaultValue="Register Now" />
                       <Input label="Call to Action Link" defaultValue="/register" />
                       <div className="flex justify-end">
-                        <Button variant="accent" size="sm">
+                        <Button variant="accent" size="sm" onClick={() => addToast("Changes saved", "success")}>
                           <Save className="mr-1.5 h-4 w-4" /> Save Changes
                         </Button>
                       </div>
@@ -165,7 +191,7 @@ export default function WebsiteCMSPage() {
                         </table>
                       </div>
                       <div className="flex justify-end">
-                        <Button variant="accent" size="sm">
+                        <Button variant="accent" size="sm" onClick={() => addToast("Changes saved", "success")}>
                           <Save className="mr-1.5 h-4 w-4" /> Save Dates
                         </Button>
                       </div>
@@ -197,16 +223,13 @@ export default function WebsiteCMSPage() {
                   {section.id === "values" && (
                     <div className="space-y-4">
                       <Input label="Mission Statement" defaultValue="Developing young footballers and building community in the Pilbara" />
-                      <div>
-                        <label className="mb-1.5 block text-sm font-medium text-gray-700">Core Values</label>
-                        <textarea
-                          rows={4}
-                          defaultValue={"Inclusivity - Everyone plays\nRespect - On and off the field\nDevelopment - Skills for life\nCommunity - Stronger together"}
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-                        />
-                      </div>
+                      <Textarea
+                        label="Core Values"
+                        rows={4}
+                        defaultValue={"Inclusivity - Everyone plays\nRespect - On and off the field\nDevelopment - Skills for life\nCommunity - Stronger together"}
+                      />
                       <div className="flex justify-end">
-                        <Button variant="accent" size="sm">
+                        <Button variant="accent" size="sm" onClick={() => addToast("Changes saved", "success")}>
                           <Save className="mr-1.5 h-4 w-4" /> Save Values
                         </Button>
                       </div>
@@ -228,7 +251,7 @@ export default function WebsiteCMSPage() {
                       <Input label="Welcome Message" defaultValue="Welcome to Nickol Soccer Club" />
                       <Input label="Subtitle" defaultValue="Sign in to access your dashboard" />
                       <div className="flex justify-end">
-                        <Button variant="accent" size="sm">
+                        <Button variant="accent" size="sm" onClick={() => addToast("Changes saved", "success")}>
                           <Save className="mr-1.5 h-4 w-4" /> Save Changes
                         </Button>
                       </div>

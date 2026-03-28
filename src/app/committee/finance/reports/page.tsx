@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Sparkles,
   BarChart3,
@@ -67,21 +70,48 @@ const STATUS_VARIANT: Record<ReportStatus, "success" | "info" | "default"> = {
 /* ------------------------------------------------------------------ */
 
 export default function ReportsPage() {
+  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleGenerate = () => {
     setGenerating(true);
-    setTimeout(() => setGenerating(false), 3000);
+    setTimeout(() => {
+      setGenerating(false);
+      addToast("Report generated", "success");
+    }, 1500);
   };
+
+  const handleExport = () => {
+    addToast("Report exported", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <SkeletonCard />
+        <SkeletonCard />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Financial Reports</h2>
-          <p className="text-sm text-gray-500">AI-generated financial reports and analysis</p>
-        </div>
+      <PageHeader title="Financial Reports" subtitle="AI-generated financial reports and analysis">
         <Button variant="accent" size="sm" onClick={handleGenerate} disabled={generating}>
           {generating ? (
             <>
@@ -93,7 +123,7 @@ export default function ReportsPage() {
             </>
           )}
         </Button>
-      </div>
+      </PageHeader>
 
       {/* AI insights banner */}
       <div className="rounded-lg border border-[#1D4ED8]/20 bg-gradient-to-r from-[#1D4ED8]/5 to-[#0B2545]/5 p-5">
@@ -199,7 +229,7 @@ export default function ReportsPage() {
                           <Button variant="ghost" size="sm">
                             <Eye className="mr-1 h-4 w-4" /> View
                           </Button>
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" onClick={handleExport}>
                             <Download className="mr-1 h-4 w-4" /> PDF
                           </Button>
                         </>

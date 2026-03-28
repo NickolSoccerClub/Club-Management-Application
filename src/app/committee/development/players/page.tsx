@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Search,
   TrendingUp,
@@ -155,6 +158,13 @@ function SkillRadar({ skills }: { skills: SkillAssessment }) {
 
 export default function PlayerDevelopmentPage() {
   const [search, setSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -166,7 +176,7 @@ export default function PlayerDevelopmentPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <h2 className="text-xl font-bold text-[#0B2545]">Player Development</h2>
+      <PageHeader title="Player Development" />
 
       {/* Search */}
       <div className="relative max-w-md">
@@ -179,74 +189,97 @@ export default function PlayerDevelopmentPage() {
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
       </div>
 
-      {/* Player Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {filtered.map((player) => (
-          <Card key={player.id} className="overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0B2545] text-sm font-bold text-white">
-                  {player.avatar}
-                </div>
-                <div>
-                  <CardTitle className="text-base">{player.name}</CardTitle>
-                  <div className="mt-1 flex gap-1.5">
-                    <Badge variant="info">{player.ageGroup}</Badge>
-                    <Badge>{player.team}</Badge>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Radar Chart */}
-              <div className="mx-auto h-40 w-40">
-                <SkillRadar skills={player.skills} />
-              </div>
-
-              {/* Skill scores */}
-              <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                {SKILL_LABELS.map((key) => (
-                  <div key={key} className="rounded-md bg-gray-50 px-2 py-1.5">
-                    <p className="font-semibold text-[#0B2545]">{player.skills[key]}/10</p>
-                    <p className="text-gray-500 capitalize">{key}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Coach Notes */}
-              <div>
-                <h4 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#0B2545]">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Coach Notes
-                </h4>
-                <p className="text-sm text-gray-600 line-clamp-2">{player.coachNotes}</p>
-              </div>
-
-              {/* Goals */}
-              <div>
-                <h4 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#0B2545]">
-                  <Target className="h-3.5 w-3.5" />
-                  Development Goals
-                </h4>
-                <ul className="space-y-1">
-                  {player.goals.map((goal, i) => (
-                    <li key={i} className="flex items-center gap-1.5 text-sm text-gray-600">
-                      <ChevronRight className="h-3 w-3 text-[#1D4ED8]" />
-                      {goal}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-          <TrendingUp className="mb-3 h-10 w-10" />
-          <p className="text-sm">No players match your search.</p>
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
+      ) : (
+        <>
+          {/* Player Cards */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((player) => (
+              <Card key={player.id} className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0B2545] text-sm font-bold text-white">
+                      {player.avatar}
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{player.name}</CardTitle>
+                      <div className="mt-1 flex gap-1.5">
+                        <Badge variant="info">{player.ageGroup}</Badge>
+                        <Badge>{player.team}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Radar Chart */}
+                  <div className="mx-auto h-40 w-40">
+                    <SkillRadar skills={player.skills} />
+                  </div>
+
+                  {/* Skill scores */}
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    {SKILL_LABELS.map((key) => (
+                      <div key={key} className="rounded-md bg-gray-50 px-2 py-1.5">
+                        <p className="font-semibold text-[#0B2545]">{player.skills[key]}/10</p>
+                        <p className="text-gray-500 capitalize">{key}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Coach Notes */}
+                  <div>
+                    <h4 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#0B2545]">
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Coach Notes
+                    </h4>
+                    <p className="text-sm text-gray-600 line-clamp-2">{player.coachNotes}</p>
+                  </div>
+
+                  {/* Goals */}
+                  <div>
+                    <h4 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[#0B2545]">
+                      <Target className="h-3.5 w-3.5" />
+                      Development Goals
+                    </h4>
+                    <ul className="space-y-1">
+                      {player.goals.map((goal, i) => (
+                        <li key={i} className="flex items-center gap-1.5 text-sm text-gray-600">
+                          <ChevronRight className="h-3 w-3 text-[#1D4ED8]" />
+                          {goal}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Save button with toast */}
+                  <div className="border-t border-gray-100 pt-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => addToast("Player development notes saved", "success")}
+                    >
+                      Save Notes
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {filtered.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <TrendingUp className="mb-3 h-10 w-10" />
+              <p className="text-sm">No players match your search.</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -1,10 +1,14 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   UserPlus,
   Mail,
@@ -56,24 +60,63 @@ const STATUS_STYLE: Record<MemberStatus, string> = {
 /* ------------------------------------------------------------------ */
 
 export default function CommitteeMembersPage() {
+  const [loading, setLoading] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingMember, setPendingMember] = useState<CommitteeMember | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
   const filled = MOCK_MEMBERS.filter((m) => m.status !== "Vacant").length;
   const total = MOCK_MEMBERS.length;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleRoleChangeClick = (member: CommitteeMember) => {
+    setPendingMember(member);
+    setConfirmOpen(true);
+  };
+
+  const handleRoleChangeConfirm = () => {
+    if (pendingMember) {
+      addToast("Member updated", "success");
+      setPendingMember(null);
+    }
+  };
+
+  const handleInvite = () => {
+    addToast("Invitation sent", "success");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Committee Members"
+          subtitle={`2025-2026 Term \u00b7 ${filled}/${total} positions filled`}
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Committee Members</h2>
-          <p className="text-sm text-gray-500">
-            2025-2026 Term &middot; {filled}/{total} positions filled
-          </p>
-        </div>
-        <Button variant="accent" size="sm">
+      <PageHeader
+        title="Committee Members"
+        subtitle={`2025-2026 Term \u00b7 ${filled}/${total} positions filled`}
+      >
+        <Button variant="accent" size="sm" onClick={handleInvite}>
           <UserPlus className="mr-1.5 h-4 w-4" />
           Invite New Member
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Member Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -132,12 +175,23 @@ export default function CommitteeMembersPage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Edit role button */}
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleRoleChangeClick(member)}
+                    >
+                      Change Role
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="mt-3 flex flex-col items-center justify-center py-6 text-gray-400">
                   <UserPlus className="mb-2 h-8 w-8" />
                   <p className="text-sm">Position vacant</p>
-                  <Button variant="secondary" size="sm" className="mt-3">
+                  <Button variant="secondary" size="sm" className="mt-3" onClick={handleInvite}>
                     Invite Member
                   </Button>
                 </div>
@@ -146,6 +200,20 @@ export default function CommitteeMembersPage() {
           </Card>
         ))}
       </div>
+
+      {/* Confirm dialog for role change */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) setPendingMember(null);
+        }}
+        onConfirm={handleRoleChangeConfirm}
+        title="Change Member Role"
+        description={`Are you sure you want to change the role for ${pendingMember?.name ?? "this member"}? This action will update their permissions and responsibilities.`}
+        variant="danger"
+        confirmLabel="Change Role"
+      />
     </div>
   );
 }

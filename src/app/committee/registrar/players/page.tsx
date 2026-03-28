@@ -1,17 +1,23 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SkeletonTable } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/committee/shared/page-header";
+import { Pagination } from "@/components/committee/shared/pagination";
+import { EmptyState } from "@/components/committee/shared/empty-state";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Upload,
   Download,
   UserPlus,
   Search,
-  ChevronLeft,
-  ChevronRight,
+  Trash2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -62,6 +68,9 @@ const STATUS_VARIANT: Record<PlayerStatus, "success" | "info" | "warning"> = {
 const AGE_GROUPS = ["All", "U10", "U12", "U14", "U16"];
 const STATUSES = ["All", "Registered", "EOI", "Pending"];
 
+const ageGroupOptions = AGE_GROUPS.map((ag) => ({ label: ag, value: ag }));
+const statusOptions = STATUSES.map((s) => ({ label: s, value: s }));
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -71,7 +80,16 @@ export default function PlayerManagementPage() {
   const [ageFilter, setAgeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const perPage = 10;
+
+  const addToast = useToastStore((s) => s.addToast);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     return MOCK_PLAYERS.filter((p) => {
@@ -89,40 +107,52 @@ export default function PlayerManagementPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
+  const handleExport = () => {
+    addToast("Player data exported successfully", "success");
+  };
+
+  const handleImport = () => {
+    addToast("Import dialog opened", "info");
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteTarget) {
+      addToast(`${deleteTarget.firstName} ${deleteTarget.lastName} has been deleted`, "success");
+      setDeleteTarget(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-[#0B2545]">Player Management</h2>
-          <p className="text-sm text-gray-500">{filtered.length} players found</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm">
-            <Upload className="mr-1.5 h-4 w-4" />
-            Import
-          </Button>
-          <Button variant="secondary" size="sm">
-            <Download className="mr-1.5 h-4 w-4" />
-            Export
-          </Button>
-          <Button variant="accent" size="sm">
-            <UserPlus className="mr-1.5 h-4 w-4" />
-            Add Player
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Player Management"
+        subtitle={`${filtered.length} players found`}
+      >
+        <Button variant="secondary" size="sm" onClick={handleImport}>
+          <Upload className="mr-1.5 h-4 w-4" />
+          Import
+        </Button>
+        <Button variant="secondary" size="sm" onClick={handleExport}>
+          <Download className="mr-1.5 h-4 w-4" />
+          Export
+        </Button>
+        <Button variant="accent" size="sm">
+          <UserPlus className="mr-1.5 h-4 w-4" />
+          Add Player
+        </Button>
+      </PageHeader>
 
       {/* Filter bar */}
       <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-end">
-        <div className="flex-1">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="Search name or email..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
           />
-          <Search className="pointer-events-none absolute mt-[-30px] ml-3 h-4 w-4 text-gray-400" />
         </div>
 
         <div className="flex gap-3">
@@ -130,55 +160,51 @@ export default function PlayerManagementPage() {
             <label className="mb-1 block text-xs font-medium text-gray-500">
               Age Group
             </label>
-            <select
+            <Select
+              options={ageGroupOptions}
               value={ageFilter}
               onChange={(e) => { setAgeFilter(e.target.value); setPage(1); }}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {AGE_GROUPS.map((ag) => (
-                <option key={ag} value={ag}>{ag}</option>
-              ))}
-            </select>
+            />
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">
               Status
             </label>
-            <select
+            <Select
+              options={statusOptions}
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/30"
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            />
           </div>
         </div>
       </div>
 
       {/* Data table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Age Group</th>
-              <th className="px-4 py-3 hidden sm:table-cell">Team</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 hidden md:table-cell">Guardian Email</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                  No players match the current filters.
-                </td>
+      {isLoading ? (
+        <SkeletonTable />
+      ) : paged.length === 0 ? (
+        <EmptyState
+          title="No players found"
+          description="No players match the current filters. Try adjusting your search or filter criteria."
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#0B2545] text-left text-xs font-semibold uppercase tracking-wider text-white">
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Age Group</th>
+                <th className="px-4 py-3 hidden sm:table-cell">Team</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 hidden md:table-cell">Guardian Email</th>
+                <th className="px-4 py-3 w-12">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
-            ) : (
-              paged.map((player, idx) => (
+            </thead>
+            <tbody>
+              {paged.map((player, idx) => (
                 <tr
                   key={player.id}
                   className={cn(
@@ -199,52 +225,47 @@ export default function PlayerManagementPage() {
                   <td className="px-4 py-3 text-gray-500 hidden md:table-cell">
                     {player.guardianEmail}
                   </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => setDeleteTarget(player)}
+                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      aria-label={`Delete ${player.firstName} ${player.lastName}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>
-            Showing {(page - 1) * perPage + 1}&#8211;
-            {Math.min(page * perPage, filtered.length)} of {filtered.length}
-          </span>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                onClick={() => setPage(n)}
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-md border text-sm",
-                  n === page
-                    ? "border-[#1D4ED8] bg-[#1D4ED8] text-white"
-                    : "border-gray-200 bg-white hover:bg-gray-50"
-                )}
-              >
-                {n}
-              </button>
-            ))}
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+
+      {/* Pagination */}
+      {!isLoading && filtered.length > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          perPage={perPage}
+          onPageChange={setPage}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Player"
+        description={
+          deleteTarget
+            ? `Are you sure you want to delete ${deleteTarget.firstName} ${deleteTarget.lastName}? This action cannot be undone.`
+            : ""
+        }
+        variant="danger"
+        confirmLabel="Delete"
+      />
     </div>
   );
 }
