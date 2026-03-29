@@ -1,233 +1,183 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Shield,
-  ClipboardList,
-  Users,
-  Mail,
-  Lock,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { Shield, Mail, Lock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Header } from "@/components/landing/header";
-import { Footer } from "@/components/landing/footer";
-
-const portals = [
-  {
-    title: "Committee Portal",
-    description: "For committee members",
-    icon: Shield,
-    href: "/committee",
-    color: "from-[#0B2545] to-[#1a3a6b]",
-    iconBg: "bg-[#0B2545]/10",
-    iconColor: "text-[#0B2545]",
-  },
-  {
-    title: "Coach Portal",
-    description: "For coaches & managers",
-    icon: ClipboardList,
-    href: "/coach",
-    color: "from-[#1D4ED8] to-[#3B82F6]",
-    iconBg: "bg-[#1D4ED8]/10",
-    iconColor: "text-[#1D4ED8]",
-  },
-  {
-    title: "Parent Portal",
-    description: "For parents & guardians",
-    icon: Users,
-    href: "/parent",
-    color: "from-[#059669] to-[#10B981]",
-    iconBg: "bg-[#059669]/10",
-    iconColor: "text-[#059669]",
-  },
-];
+import { createClient } from "@/lib/supabase/client";
+import { useToastStore } from "@/lib/stores/toast-store";
 
 export default function LoginPage() {
-  const [loginMethod, setLoginMethod] = useState<"password" | "magic">("password");
+  const router = useRouter();
+  const { addToast } = useToastStore();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [magicSent, setMagicSent] = useState(false);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  function handlePasswordSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // placeholder — would integrate with auth
-  }
+    setError("");
 
-  function handleMagicSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setMagicSent(true);
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const supabase = createClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message === "Invalid login credentials"
+          ? "Invalid email or password. Please try again."
+          : authError.message
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      addToast("Signed in successfully. Welcome back!", "success");
+      router.push("/committee");
+    } catch {
+      setError("An unexpected error occurred. Please try again.");
+      setIsLoading(false);
+    }
   }
 
   return (
-    <>
-      <Header />
-      <main className="min-h-screen bg-gray-50 pt-20 pb-16">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          {/* Hero */}
-          <div className="pt-8 pb-8 text-center">
-            <h1 className="text-3xl font-bold text-[#0B2545] sm:text-4xl">Welcome Back</h1>
-            <p className="mt-2 text-gray-600">
-              Choose your portal or sign in below to access your dashboard.
+    <div className="flex min-h-screen">
+      {/* Left branding panel - hidden on mobile */}
+      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-[#0B2545] px-12 text-white">
+        <div className="mx-auto max-w-md text-center">
+          {/* Club shield icon */}
+          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm">
+            <Shield className="h-14 w-14 text-white" />
+          </div>
+
+          <h1 className="mt-8 text-3xl font-bold tracking-tight">
+            Nickol Soccer Club
+          </h1>
+          <p className="mt-3 text-lg text-blue-200">
+            Manage your club, teams, and players — all in one place.
+          </p>
+
+          {/* Decorative dots */}
+          <div className="mt-10 flex items-center justify-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-white/30" />
+            <span className="h-2 w-8 rounded-full bg-white/50" />
+            <span className="h-2 w-2 rounded-full bg-white/30" />
+          </div>
+        </div>
+      </div>
+
+      {/* Right login form panel */}
+      <div className="flex w-full flex-col items-center justify-center px-6 py-12 lg:w-1/2">
+        {/* Mobile branding - visible only on small screens */}
+        <div className="mb-8 flex flex-col items-center lg:hidden">
+          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#0B2545]">
+            <Shield className="h-9 w-9 text-white" />
+          </div>
+          <h1 className="mt-4 text-2xl font-bold text-[#0B2545]">
+            Nickol Soccer Club
+          </h1>
+        </div>
+
+        <div className="w-full max-w-sm">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Sign in to access your dashboard.
             </p>
           </div>
 
-          {/* Portal cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            {portals.map((portal) => {
-              const Icon = portal.icon;
-              return (
-                <a key={portal.title} href={portal.href} className="group">
-                  <Card className="h-full transition-all hover:shadow-lg hover:-translate-y-0.5">
-                    <CardContent className="flex flex-col items-center p-6 text-center">
-                      <div className={cn("flex h-14 w-14 items-center justify-center rounded-xl", portal.iconBg)}>
-                        <Icon className={cn("h-7 w-7", portal.iconColor)} />
-                      </div>
-                      <h2 className="mt-4 text-base font-semibold text-[#0B2545]">
-                        {portal.title}
-                      </h2>
-                      <p className="mt-1 text-sm text-gray-500">{portal.description}</p>
-                      <div className="mt-4 flex items-center gap-1 text-sm font-medium text-[#1D4ED8] group-hover:gap-2 transition-all">
-                        Enter
-                        <ArrowRight className="h-4 w-4" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </a>
-              );
-            })}
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Input
+              label="Email address"
+              type="email"
+              placeholder="you@example.com"
+              required
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError("");
+              }}
+              autoComplete="email"
+            />
 
-          {/* Divider */}
-          <div className="relative my-10">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
+            <Input
+              label="Password"
+              type="password"
+              placeholder="Enter your password"
+              required
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError("");
+              }}
+              autoComplete="current-password"
+            />
+
+            {/* Error display */}
+            {error && (
+              <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-[#B91C1C]">
+                {error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end">
+              <a
+                href="#"
+                className="text-sm font-medium text-[#1D4ED8] hover:text-[#0B2545] transition-colors"
+              >
+                Forgot password?
+              </a>
             </div>
-            <div className="relative flex justify-center">
-              <span className="bg-gray-50 px-4 text-sm text-gray-500">or sign in with your account</span>
-            </div>
-          </div>
 
-          {/* Login form */}
-          <div className="mx-auto max-w-md">
-            <Card>
-              <CardContent className="p-6">
-                {/* Method toggle */}
-                <div className="mb-6 flex rounded-lg border border-gray-200 p-1">
-                  <button
-                    type="button"
-                    onClick={() => { setLoginMethod("password"); setMagicSent(false); }}
-                    className={cn(
-                      "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                      loginMethod === "password"
-                        ? "bg-[#0B2545] text-white"
-                        : "text-gray-600 hover:text-gray-900"
-                    )}
-                  >
-                    <span className="flex items-center justify-center gap-1.5">
-                      <Lock className="h-3.5 w-3.5" />
-                      Password
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setLoginMethod("magic"); setMagicSent(false); }}
-                    className={cn(
-                      "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                      loginMethod === "magic"
-                        ? "bg-[#0B2545] text-white"
-                        : "text-gray-600 hover:text-gray-900"
-                    )}
-                  >
-                    <span className="flex items-center justify-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Magic Link
-                    </span>
-                  </button>
-                </div>
+            <Button
+              type="submit"
+              variant="accent"
+              size="lg"
+              className="w-full"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing in...
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  Sign In
+                </span>
+              )}
+            </Button>
+          </form>
 
-                {loginMethod === "password" && (
-                  <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                    <Input
-                      label="Email"
-                      type="email"
-                      placeholder="you@example.com"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                    <Input
-                      label="Password"
-                      type="password"
-                      placeholder="Enter your password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <div className="flex items-center justify-end">
-                      <a href="#" className="text-sm font-medium text-[#1D4ED8] hover:text-[#0B2545] transition-colors">
-                        Forgot password?
-                      </a>
-                    </div>
-                    <Button type="submit" variant="accent" size="lg" className="w-full">
-                      <span className="flex items-center justify-center gap-2">
-                        <Lock className="h-4 w-4" />
-                        Sign In
-                      </span>
-                    </Button>
-                  </form>
-                )}
-
-                {loginMethod === "magic" && !magicSent && (
-                  <form onSubmit={handleMagicSubmit} className="space-y-4">
-                    <Input
-                      label="Email"
-                      type="email"
-                      placeholder="you@example.com"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      We&apos;ll send a secure sign-in link to your email. No password needed.
-                    </p>
-                    <Button type="submit" variant="accent" size="lg" className="w-full">
-                      <span className="flex items-center justify-center gap-2">
-                        <Mail className="h-4 w-4" />
-                        Send Magic Link
-                      </span>
-                    </Button>
-                  </form>
-                )}
-
-                {loginMethod === "magic" && magicSent && (
-                  <div className="py-6 text-center">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
-                      <Mail className="h-6 w-6 text-green-600" />
-                    </div>
-                    <h3 className="mt-4 text-base font-semibold text-[#0B2545]">Check Your Email</h3>
-                    <p className="mt-2 text-sm text-gray-600">
-                      We&apos;ve sent a magic link to <span className="font-medium">{email}</span>.
-                      Click the link in the email to sign in.
-                    </p>
-                    <button
-                      onClick={() => setMagicSent(false)}
-                      className="mt-4 text-sm font-medium text-[#1D4ED8] hover:text-[#0B2545] transition-colors"
-                    >
-                      Try a different email
-                    </button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {/* Footer note */}
+          <p className="mt-8 text-center text-xs text-gray-500">
+            Don&apos;t have an account?{" "}
+            <a
+              href="mailto:admin@nickolsoccer.com"
+              className="font-medium text-[#1D4ED8] hover:text-[#0B2545] transition-colors"
+            >
+              Contact your club administrator
+            </a>
+          </p>
         </div>
-      </main>
-      <Footer />
-    </>
+      </div>
+    </div>
   );
 }

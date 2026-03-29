@@ -2,9 +2,8 @@
 -- Nickol Soccer Club - Complete Database Schema
 -- ============================================================
 
--- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgvector";
+-- NOTE: gen_random_uuid() is natively available in Supabase (pgcrypto)
+-- NOTE: pgvector must be enabled from Supabase Dashboard > Database > Extensions
 
 -- ============================================================
 -- AUTH & RBAC
@@ -21,7 +20,7 @@ CREATE TABLE profiles (
 );
 
 CREATE TABLE seasons (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   year INTEGER NOT NULL,
   start_date DATE NOT NULL,
@@ -32,7 +31,7 @@ CREATE TABLE seasons (
 );
 
 CREATE TABLE user_roles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   role_type TEXT NOT NULL CHECK (role_type IN ('parent','coach','manager','committee','admin')),
   season_id UUID REFERENCES seasons(id),
@@ -48,7 +47,7 @@ CREATE INDEX idx_user_roles_role ON user_roles(role_type);
 -- ============================================================
 
 CREATE TABLE players (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   dob DATE NOT NULL,
@@ -67,7 +66,7 @@ CREATE INDEX idx_players_age_group ON players(age_group);
 CREATE INDEX idx_players_status ON players(status);
 
 CREATE TABLE guardians (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES profiles(id),
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
@@ -84,7 +83,7 @@ CREATE TABLE player_guardians (
 );
 
 CREATE TABLE teams (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   age_group TEXT NOT NULL,
   division TEXT NOT NULL DEFAULT 'A',
@@ -96,7 +95,7 @@ CREATE TABLE teams (
 );
 
 CREATE TABLE team_players (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   jersey_number INTEGER,
@@ -106,7 +105,7 @@ CREATE TABLE team_players (
 );
 
 CREATE TABLE schedule_games (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id),
   home_team_id UUID NOT NULL REFERENCES teams(id),
   away_team TEXT NOT NULL,
@@ -127,7 +126,7 @@ CREATE TABLE schedule_games (
 -- ============================================================
 
 CREATE TABLE income (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id),
   date DATE NOT NULL,
   description TEXT NOT NULL,
@@ -141,7 +140,7 @@ CREATE TABLE income (
 );
 
 CREATE TABLE expenses (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id),
   date DATE NOT NULL,
   description TEXT NOT NULL,
@@ -155,7 +154,7 @@ CREATE TABLE expenses (
 );
 
 CREATE TABLE budget_categories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id),
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('income','expense')),
@@ -165,7 +164,7 @@ CREATE TABLE budget_categories (
 );
 
 CREATE TABLE sponsors (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_name TEXT NOT NULL,
   contact_name TEXT NOT NULL,
   contact_email TEXT NOT NULL,
@@ -182,7 +181,7 @@ CREATE TABLE sponsors (
 );
 
 CREATE TABLE grants (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id),
   grant_name TEXT NOT NULL,
   granting_body TEXT NOT NULL,
@@ -201,7 +200,7 @@ CREATE TABLE grants (
 -- ============================================================
 
 CREATE TABLE coaches (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id),
   certification_level TEXT,
   wwcc_number TEXT,
@@ -213,7 +212,7 @@ CREATE TABLE coaches (
 );
 
 CREATE TABLE drills (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   drill_id_code TEXT NOT NULL UNIQUE,  -- e.g. "DRB-001"
   name TEXT NOT NULL,
   age_groups TEXT NOT NULL,
@@ -233,7 +232,7 @@ CREATE TABLE drills (
 );
 
 CREATE TABLE training_sessions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   age_group TEXT NOT NULL,
   skill_level TEXT NOT NULL,
@@ -245,7 +244,7 @@ CREATE TABLE training_sessions (
 );
 
 CREATE TABLE session_drills (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
   drill_id UUID NOT NULL REFERENCES drills(id),
   section TEXT NOT NULL CHECK (section IN ('warm_up','main','cool_down')),
@@ -254,7 +253,7 @@ CREATE TABLE session_drills (
 );
 
 CREATE TABLE equipment (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   quantity INTEGER NOT NULL DEFAULT 0,
@@ -266,7 +265,7 @@ CREATE TABLE equipment (
 );
 
 CREATE TABLE kb_documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   file_url TEXT NOT NULL,
   file_size INTEGER NOT NULL,
@@ -279,22 +278,24 @@ CREATE TABLE kb_documents (
 );
 
 -- Vector embeddings for RAG (Coach Niko)
+-- NOTE: Enable pgvector extension from Dashboard first, then run:
+-- ALTER TABLE kb_embeddings ADD COLUMN embedding VECTOR(768);
+-- CREATE INDEX idx_kb_embeddings_vector ON kb_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 CREATE TABLE kb_embeddings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id UUID NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,
   chunk_text TEXT NOT NULL,
   chunk_index INTEGER NOT NULL,
-  embedding VECTOR(768),  -- Gemini embedding dimension
+  -- embedding VECTOR(768) -- added after pgvector is enabled
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_kb_embeddings_vector ON kb_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ============================================================
 -- COMMUNICATIONS
 -- ============================================================
 
 CREATE TABLE messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   subject TEXT NOT NULL,
   body TEXT NOT NULL,
   sender_id UUID NOT NULL REFERENCES profiles(id),
@@ -306,7 +307,7 @@ CREATE TABLE messages (
 );
 
 CREATE TABLE news_articles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   content TEXT NOT NULL,
@@ -319,7 +320,7 @@ CREATE TABLE news_articles (
 );
 
 CREATE TABLE media (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   url TEXT NOT NULL,
   thumbnail_url TEXT,
   type TEXT NOT NULL DEFAULT 'image',
@@ -330,7 +331,7 @@ CREATE TABLE media (
 );
 
 CREATE TABLE social_posts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   content TEXT NOT NULL,
   platforms TEXT[] NOT NULL DEFAULT '{}',
   scheduled_at TIMESTAMPTZ,
@@ -342,7 +343,7 @@ CREATE TABLE social_posts (
 );
 
 CREATE TABLE events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   description TEXT,
   date DATE NOT NULL,
@@ -361,7 +362,7 @@ CREATE TABLE events (
 -- ============================================================
 
 CREATE TABLE committee_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id),
   role_name TEXT NOT NULL,
   season_id UUID NOT NULL REFERENCES seasons(id),
@@ -371,7 +372,7 @@ CREATE TABLE committee_members (
 );
 
 CREATE TABLE meetings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   date DATE NOT NULL,
   time TIME NOT NULL,
@@ -384,7 +385,7 @@ CREATE TABLE meetings (
 );
 
 CREATE TABLE agenda_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   presenter TEXT,
@@ -393,7 +394,7 @@ CREATE TABLE agenda_items (
 );
 
 CREATE TABLE action_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   description TEXT,
   assigned_to UUID NOT NULL REFERENCES profiles(id),
@@ -406,21 +407,21 @@ CREATE TABLE action_items (
 );
 
 CREATE TABLE agm_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES seasons(id),
   date DATE NOT NULL,
   attendee_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE agm_positions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agm_id UUID NOT NULL REFERENCES agm_records(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','voting','completed'))
 );
 
 CREATE TABLE agm_nominees (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   position_id UUID NOT NULL REFERENCES agm_positions(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   statement TEXT,
@@ -429,7 +430,7 @@ CREATE TABLE agm_nominees (
 );
 
 CREATE TABLE documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   folder TEXT NOT NULL,
   type TEXT NOT NULL,
@@ -444,7 +445,7 @@ CREATE TABLE documents (
 -- ============================================================
 
 CREATE TABLE notifications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id),
   type TEXT NOT NULL DEFAULT 'info' CHECK (type IN ('info','warning','success','action_required')),
   title TEXT NOT NULL,
@@ -458,7 +459,7 @@ CREATE TABLE notifications (
 CREATE INDEX idx_notifications_user ON notifications(user_id, read);
 
 CREATE TABLE audit_log (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id),
   action TEXT NOT NULL,
   entity_type TEXT NOT NULL,
@@ -471,7 +472,7 @@ CREATE INDEX idx_audit_log_user ON audit_log(user_id);
 CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
 
 CREATE TABLE photo_consents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   guardian_id UUID NOT NULL REFERENCES guardians(id),
   consent_type TEXT NOT NULL DEFAULT 'none' CHECK (consent_type IN ('none','internal_only','public_website','social_media')),
