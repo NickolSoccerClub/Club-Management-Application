@@ -27,6 +27,7 @@ const COACHING_BOOKS = [
 ];
 
 export async function GET() {
+  try {
   // Check if chunks already exist (docs may exist without chunks from a failed run)
   const { count: chunkCount } = await supabase.from("kb_embeddings").select("*", { count: "exact", head: true });
   if (chunkCount && chunkCount > 0) {
@@ -100,4 +101,8 @@ export async function GET() {
     documentsCreated: COACHING_BOOKS.length,
     knowledgeChunked: true,
   });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
