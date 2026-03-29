@@ -1,23 +1,20 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { cn } from "@/lib/utils";
+import React, { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/committee/shared/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToastStore } from "@/lib/stores/toast-store";
+import { DRILL_LIBRARY, type DrillFull } from "@/lib/data/drills";
 import {
-  Loader2,
-  Globe,
-  Sparkles,
   Plus,
+  Minus,
   Clock,
   Target,
   Users,
@@ -29,20 +26,13 @@ import {
   Snowflake,
   Dumbbell,
   Trash2,
-  BookOpen,
-  ExternalLink,
-  Save,
+  Search,
+  GripVertical,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Mock Data                                                  */
 /* ------------------------------------------------------------------ */
-
-interface Drill {
-  name: string;
-  description: string;
-  duration: string;
-}
 
 interface Session {
   id: number;
@@ -61,24 +51,9 @@ interface AISession {
   ageGroup: string;
   duration: string;
   warmUp: { name: string; description: string; duration: string };
-  drills: Drill[];
+  drills: { name: string; description: string; duration: string }[];
   coolDown: { name: string; description: string; duration: string };
   coachNotes: string;
-}
-
-interface DrillGenerated {
-  drill_id: string;
-  name: string;
-  age_groups: string;
-  skill_category: string;
-  difficulty: string;
-  duration_minutes: number;
-  equipment: string;
-  setup: string;
-  instructions: string;
-  coach_role: string;
-  targeted_results: string;
-  ai_image_description: string;
 }
 
 const MOCK_SESSIONS: Session[] = [
@@ -98,26 +73,10 @@ const MOCK_AI_SESSION: AISession = {
     duration: "10 min",
   },
   drills: [
-    {
-      name: "Triangle Passing",
-      description: "Players form triangles of 3. Pass and move to the next cone. Focus on weight of pass, first touch, and body positioning. Progress: add a defender in the middle.",
-      duration: "12 min",
-    },
-    {
-      name: "Through Ball Channel",
-      description: "Two channels with attackers and defenders. Attackers must play a through ball to a runner. Emphasis on timing of pass and run. Rotate roles every 3 minutes.",
-      duration: "12 min",
-    },
-    {
-      name: "Possession Box (4v2)",
-      description: "4 attackers keep possession in a 12x12m grid against 2 defenders. If defenders win the ball, swap with the player who lost it. Focus on quick passing and finding angles.",
-      duration: "10 min",
-    },
-    {
-      name: "Small-Sided Game (4v4)",
-      description: "4v4 game with a condition: must make 3 passes before scoring. Encourages combination play and patient build-up. Regular goals with small goal areas.",
-      duration: "12 min",
-    },
+    { name: "Triangle Passing", description: "Players form triangles of 3. Pass and move to the next cone. Focus on weight of pass, first touch, and body positioning. Progress: add a defender in the middle.", duration: "12 min" },
+    { name: "Through Ball Channel", description: "Two channels with attackers and defenders. Attackers must play a through ball to a runner. Emphasis on timing of pass and run. Rotate roles every 3 minutes.", duration: "12 min" },
+    { name: "Possession Box (4v2)", description: "4 attackers keep possession in a 12x12m grid against 2 defenders. If defenders win the ball, swap with the player who lost it. Focus on quick passing and finding angles.", duration: "10 min" },
+    { name: "Small-Sided Game (4v4)", description: "4v4 game with a condition: must make 3 passes before scoring. Encourages combination play and patient build-up. Regular goals with small goal areas.", duration: "12 min" },
   ],
   coolDown: {
     name: "Cool-Down & Reflection",
@@ -130,8 +89,7 @@ const MOCK_AI_SESSION: AISession = {
 const FOCUS_AREAS = ["Passing", "Shooting", "Defending", "Dribbling", "Fitness", "Tactical"];
 const AGE_GROUPS = ["U6", "U8", "U10", "U12", "U14", "U16"];
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"];
-const DIFFICULTIES = ["Beginner", "Intermediate", "Advanced"];
-const DRILL_CATEGORIES = ["Passing", "Shooting", "Defending", "Dribbling", "Fitness", "Tactical", "Warm-Up", "Cool-Down"];
+const TARGET_DURATIONS = ["45 min", "60 min", "75 min", "90 min"];
 
 const FOCUS_VARIANT: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
   Passing: "info",
@@ -142,62 +100,103 @@ const FOCUS_VARIANT: Record<string, "default" | "success" | "warning" | "danger"
   Tactical: "info",
 };
 
+const CATEGORY_VARIANT: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
+  Passing: "info",
+  Shooting: "danger",
+  Defending: "success",
+  Dribbling: "warning",
+  Fitness: "default",
+  Tactical: "info",
+  "Warm-Up": "warning",
+  "Cool-Down": "info",
+};
+
+/* ------------------------------------------------------------------ */
+/*  Age-group mapping helper                                           */
+/* ------------------------------------------------------------------ */
+
+const AGE_GROUP_MAP: Record<string, string[]> = {
+  U6: ["4-6"],
+  U8: ["4-6", "7-9"],
+  U10: ["7-9", "10-13"],
+  U12: ["10-13"],
+  U14: ["10-13", "14-17"],
+  U16: ["14-17"],
+};
+
+function drillMatchesAgeGroup(drill: DrillFull, ageGroup: string): boolean {
+  if (!ageGroup) return true;
+  const ranges = AGE_GROUP_MAP[ageGroup] || [];
+  return ranges.some((range) => drill.age_groups.includes(range));
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function SessionBuilderPage() {
-  const [ageGroup, setAgeGroup] = useState("U12");
-  const [skillLevel, setSkillLevel] = useState("Beginner");
-  const [focusArea, setFocusArea] = useState("Passing");
-  const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteSessionId, setDeleteSessionId] = useState<number | null>(null);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
 
-  // Import from Web state
-  const [scrapeUrl, setScrapeUrl] = useState("");
-  const [scraping, setScraping] = useState(false);
-  const [scrapedContent, setScrapedContent] = useState<{ content: string; title: string; url: string } | null>(null);
-  const [showFullContent, setShowFullContent] = useState(false);
-  const [scrapeAgeGroup, setScrapeAgeGroup] = useState("U12");
-  const [scrapeFocusArea, setScrapeFocusArea] = useState("Passing");
-  const [scrapeDifficulty, setScrapeDifficulty] = useState("Intermediate");
-  const [generatingDrill, setGeneratingDrill] = useState(false);
-  const [generatedDrill, setGeneratedDrill] = useState<DrillGenerated | null>(null);
-  const [drillForm, setDrillForm] = useState<{
-    name: string;
-    category: string;
-    ageGroups: string;
-    difficulty: string;
-    duration: string;
-    equipment: string;
-    setup: string;
-    instructions: string;
-    coachRole: string;
-    targetedResults: string;
-  } | null>(null);
+  // Build Session state
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [sessionAgeGroup, setSessionAgeGroup] = useState("U12");
+  const [sessionSkillLevel, setSessionSkillLevel] = useState("Beginner");
+  const [sessionFocusArea, setSessionFocusArea] = useState("Passing");
+  const [sessionDuration, setSessionDuration] = useState("60 min");
+  const [drillSearch, setDrillSearch] = useState("");
+
+  const [warmUpDrills, setWarmUpDrills] = useState<DrillFull[]>([]);
+  const [mainDrills, setMainDrills] = useState<DrillFull[]>([]);
+  const [coolDownDrills, setCoolDownDrills] = useState<DrillFull[]>([]);
 
   const addToast = useToastStore((s) => s.addToast);
 
-  // Skeleton loading state
+  // Skeleton loading
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 600);
     return () => clearTimeout(timer);
   }, []);
 
-  const handleGenerate = () => {
-    setGenerating(true);
-    setTimeout(() => {
-      setGenerating(false);
-      setShowPreview(true);
-    }, 1500);
-  };
+  // IDs of drills already added to the session
+  const addedDrillIds = useMemo(() => {
+    const ids = new Set<string>();
+    warmUpDrills.forEach((d) => ids.add(d.drill_id));
+    mainDrills.forEach((d) => ids.add(d.drill_id));
+    coolDownDrills.forEach((d) => ids.add(d.drill_id));
+    return ids;
+  }, [warmUpDrills, mainDrills, coolDownDrills]);
+
+  // Filtered drill library
+  const availableDrills = useMemo(() => {
+    return DRILL_LIBRARY.filter((drill) => {
+      if (addedDrillIds.has(drill.drill_id)) return false;
+      if (!drillMatchesAgeGroup(drill, sessionAgeGroup)) return false;
+      if (drillSearch.trim()) {
+        const q = drillSearch.toLowerCase();
+        return (
+          drill.name.toLowerCase().includes(q) ||
+          drill.skill_category.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [sessionAgeGroup, drillSearch, addedDrillIds]);
+
+  // Running total duration
+  const totalDuration = useMemo(() => {
+    let total = 0;
+    warmUpDrills.forEach((d) => (total += d.duration_minutes));
+    mainDrills.forEach((d) => (total += d.duration_minutes));
+    coolDownDrills.forEach((d) => (total += d.duration_minutes));
+    return total;
+  }, [warmUpDrills, mainDrills, coolDownDrills]);
+
+  /* ---- Handlers ---- */
 
   const handleDeleteSession = () => {
-    // In a real app, delete the session by deleteSessionId
     setDeleteSessionId(null);
     addToast("Session deleted", "success");
   };
@@ -210,91 +209,101 @@ export default function SessionBuilderPage() {
     addToast("Draft saved", "success");
   };
 
-  /* ---- Import from Web handlers ---- */
-
-  const handleScrape = async () => {
-    if (!scrapeUrl.trim()) return;
-    setScraping(true);
-    setScrapedContent(null);
-    setGeneratedDrill(null);
-    setDrillForm(null);
-    try {
-      const res = await fetch("/api/scrape", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: scrapeUrl }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setScrapedContent({
-          content: data.content || "",
-          title: data.title || "Untitled Page",
-          url: scrapeUrl,
-        });
-      } else {
-        addToast(data.error || "Failed to scrape content", "error");
-      }
-    } catch {
-      addToast("Failed to scrape content", "error");
-    } finally {
-      setScraping(false);
-    }
+  const addDrillToSection = (drill: DrillFull, section: "warmUp" | "main" | "coolDown") => {
+    if (section === "warmUp") setWarmUpDrills((prev) => [...prev, drill]);
+    else if (section === "main") setMainDrills((prev) => [...prev, drill]);
+    else setCoolDownDrills((prev) => [...prev, drill]);
   };
 
-  const handleGenerateDrill = async () => {
-    if (!scrapedContent) return;
-    setGeneratingDrill(true);
-    setGeneratedDrill(null);
-    setDrillForm(null);
-    try {
-      const res = await fetch("/api/drills/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scrapedContent: scrapedContent.content,
-          focusArea: scrapeFocusArea,
-          ageGroup: scrapeAgeGroup,
-          difficulty: scrapeDifficulty,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        const drill: DrillGenerated = data.drill || data;
-        setGeneratedDrill(drill);
-        setDrillForm({
-          name: drill.name || "",
-          category: drill.skill_category || "",
-          ageGroups: drill.age_groups || "",
-          difficulty: drill.difficulty || "",
-          duration: String(drill.duration_minutes || ""),
-          equipment: drill.equipment || "",
-          setup: drill.setup || "",
-          instructions: drill.instructions || "",
-          coachRole: drill.coach_role || "",
-          targetedResults: drill.targeted_results || "",
-        });
-      } else {
-        addToast(data.error || "Failed to generate drill", "error");
-      }
-    } catch {
-      addToast("Failed to generate drill", "error");
-    } finally {
-      setGeneratingDrill(false);
-    }
+  const removeDrillFromSection = (drillId: string, section: "warmUp" | "main" | "coolDown") => {
+    if (section === "warmUp") setWarmUpDrills((prev) => prev.filter((d) => d.drill_id !== drillId));
+    else if (section === "main") setMainDrills((prev) => prev.filter((d) => d.drill_id !== drillId));
+    else setCoolDownDrills((prev) => prev.filter((d) => d.drill_id !== drillId));
   };
 
-  const handleSaveDrill = () => {
-    addToast("Drill saved to library", "success");
-  };
+  /* ---- Drill row in the available list ---- */
+  const renderAvailableDrill = (drill: DrillFull) => (
+    <div
+      key={drill.drill_id}
+      className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm hover:border-gray-200 hover:bg-gray-50"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium text-[#0B2545]">{drill.name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <Badge variant={CATEGORY_VARIANT[drill.skill_category] || "default"} className="text-xs">
+            {drill.skill_category}
+          </Badge>
+          <span className="text-xs text-gray-400">{drill.duration_minutes} min</span>
+          <span className="text-xs text-gray-400">&middot;</span>
+          <span className="text-xs text-gray-400">{drill.difficulty}</span>
+        </div>
+      </div>
+      <div className="flex shrink-0 gap-1">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          title="Add to Warm-Up"
+          onClick={() => addDrillToSection(drill, "warmUp")}
+        >
+          <Flame className="mr-1 h-3 w-3 text-orange-500" />
+          <Plus className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          title="Add to Main Drills"
+          onClick={() => addDrillToSection(drill, "main")}
+        >
+          <Dumbbell className="mr-1 h-3 w-3 text-[#1D4ED8]" />
+          <Plus className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          title="Add to Cool-Down"
+          onClick={() => addDrillToSection(drill, "coolDown")}
+        >
+          <Snowflake className="mr-1 h-3 w-3 text-sky-500" />
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
 
-  const updateDrillForm = (field: string, value: string) => {
-    setDrillForm((prev) => (prev ? { ...prev, [field]: value } : prev));
-  };
+  /* ---- Drill row in a session section ---- */
+  const renderSessionDrill = (drill: DrillFull, section: "warmUp" | "main" | "coolDown") => (
+    <div
+      key={drill.drill_id}
+      className="flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm"
+    >
+      <GripVertical className="h-4 w-4 shrink-0 text-gray-300" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium text-[#0B2545]">{drill.name}</p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <Badge variant={CATEGORY_VARIANT[drill.skill_category] || "default"} className="text-xs">
+            {drill.skill_category}
+          </Badge>
+          <span className="text-xs text-gray-400">{drill.duration_minutes} min</span>
+        </div>
+      </div>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="h-7 w-7 shrink-0 p-0"
+        onClick={() => removeDrillFromSection(drill.drill_id, section)}
+      >
+        <Minus className="h-3.5 w-3.5 text-red-500" />
+      </Button>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <PageHeader title="Session Builder">
+      <PageHeader title="Session Builder" subtitle="Build training sessions from the drill library">
         <Button variant="accent" size="sm">
           <Plus className="mr-1.5 h-4 w-4" />
           Create New Session
@@ -308,15 +317,16 @@ export default function SessionBuilderPage() {
           ))}
         </div>
       ) : (
-        <Tabs defaultValue="published">
+        <Tabs defaultValue="sessions">
           <TabsList>
-            <TabsTrigger value="published">Published Sessions</TabsTrigger>
-            <TabsTrigger value="drafts">Drafts</TabsTrigger>
-            <TabsTrigger value="ai">AI Generated</TabsTrigger>
+            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="build">Build Session</TabsTrigger>
           </TabsList>
 
-          {/* Published Sessions */}
-          <TabsContent value="published">
+          {/* ============================================================ */}
+          {/* Tab 1: Sessions                                               */}
+          {/* ============================================================ */}
+          <TabsContent value="sessions">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {MOCK_SESSIONS.map((session) => (
                 <Card key={session.id}>
@@ -330,6 +340,9 @@ export default function SessionBuilderPage() {
                             {session.focusArea}
                           </Badge>
                           <Badge>{session.skillLevel}</Badge>
+                          <Badge variant={session.status === "Published" ? "success" : "default"}>
+                            {session.status}
+                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -380,358 +393,157 @@ export default function SessionBuilderPage() {
             </div>
           </TabsContent>
 
-          {/* Drafts */}
-          <TabsContent value="drafts">
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-              <FileText className="mb-3 h-10 w-10" />
-              <p className="text-sm">No draft sessions.</p>
-            </div>
-          </TabsContent>
-
-          {/* AI Generated */}
-          <TabsContent value="ai">
+          {/* ============================================================ */}
+          {/* Tab 2: Build Session                                          */}
+          {/* ============================================================ */}
+          <TabsContent value="build">
             <div className="space-y-6">
-
-              {/* ============================================================ */}
-              {/* Section 1: Import from Web                                    */}
-              {/* ============================================================ */}
+              {/* Session Details Form */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Globe className="h-5 w-5 text-[#1D4ED8]" />
-                    Import from Web
-                  </CardTitle>
+                  <CardTitle className="text-base">Session Details</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* URL Input */}
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <Input
-                        placeholder="Enter coaching website URL..."
-                        value={scrapeUrl}
-                        onChange={(e) => setScrapeUrl(e.target.value)}
-                      />
-                    </div>
-                    <Button
-                      variant="accent"
-                      size="sm"
-                      onClick={handleScrape}
-                      disabled={scraping || !scrapeUrl.trim()}
-                    >
-                      {scraping ? (
-                        <>
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                          Scraping...
-                        </>
-                      ) : (
-                        <>
-                          <Globe className="mr-1.5 h-4 w-4" />
-                          Scrape Content
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Scraped Content Preview */}
-                  {scrapedContent && !generatingDrill && !drillForm && (
-                    <div className="space-y-4 rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className="text-sm font-semibold text-[#0B2545]">{scrapedContent.title}</h4>
-                          <a
-                            href={scrapedContent.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-1 flex items-center gap-1 text-xs text-[#1D4ED8] hover:underline"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            {scrapedContent.url}
-                          </a>
-                        </div>
-                        <Badge variant="info">Scraped</Badge>
-                      </div>
-
-                      <div className="rounded-md bg-gray-100 p-3">
-                        <p className="whitespace-pre-wrap text-sm text-gray-600">
-                          {showFullContent
-                            ? scrapedContent.content
-                            : scrapedContent.content.slice(0, 500) +
-                              (scrapedContent.content.length > 500 ? "..." : "")}
-                        </p>
-                        {scrapedContent.content.length > 500 && (
-                          <button
-                            className="mt-2 flex items-center gap-1 text-xs font-medium text-[#1D4ED8] hover:underline"
-                            onClick={() => setShowFullContent(!showFullContent)}
-                          >
-                            <Eye className="h-3 w-3" />
-                            {showFullContent ? "Show Less" : "View Full Content"}
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Selection Controls */}
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <Select
-                          label="Age Group"
-                          options={AGE_GROUPS.map((ag) => ({ label: ag, value: ag }))}
-                          value={scrapeAgeGroup}
-                          onChange={(e) => setScrapeAgeGroup(e.target.value)}
-                        />
-                        <Select
-                          label="Focus Area"
-                          options={FOCUS_AREAS.map((fa) => ({ label: fa, value: fa }))}
-                          value={scrapeFocusArea}
-                          onChange={(e) => setScrapeFocusArea(e.target.value)}
-                        />
-                        <Select
-                          label="Difficulty"
-                          options={DIFFICULTIES.map((d) => ({ label: d, value: d }))}
-                          value={scrapeDifficulty}
-                          onChange={(e) => setScrapeDifficulty(e.target.value)}
-                        />
-                      </div>
-
-                      <Button
-                        variant="accent"
-                        size="sm"
-                        onClick={handleGenerateDrill}
-                        disabled={generatingDrill}
-                      >
-                        <Sparkles className="mr-1.5 h-4 w-4" />
-                        Generate Drill from This
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Generating Drill Spinner */}
-                  {generatingDrill && (
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-200 py-12 text-gray-400">
-                      <Loader2 className="mb-3 h-8 w-8 animate-spin text-[#1D4ED8]" />
-                      <p className="text-sm text-gray-500">Generating drill...</p>
-                    </div>
-                  )}
-
-                  {/* Generated Drill Review Form */}
-                  {drillForm && !generatingDrill && (
-                    <div className="space-y-4 rounded-lg border-2 border-[#1D4ED8]/30 p-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="flex items-center gap-2 text-sm font-semibold text-[#0B2545]">
-                          <BookOpen className="h-4 w-4 text-[#1D4ED8]" />
-                          Generated Drill — Review &amp; Edit
-                        </h4>
-                        <Badge variant="info">AI Generated</Badge>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <Input
-                          label="Name"
-                          value={drillForm.name}
-                          onChange={(e) => updateDrillForm("name", e.target.value)}
-                        />
-                        <Select
-                          label="Category"
-                          options={DRILL_CATEGORIES.map((c) => ({ label: c, value: c }))}
-                          value={drillForm.category}
-                          onChange={(e) => updateDrillForm("category", e.target.value)}
-                        />
-                        <Input
-                          label="Age Groups"
-                          value={drillForm.ageGroups}
-                          onChange={(e) => updateDrillForm("ageGroups", e.target.value)}
-                        />
-                        <Select
-                          label="Difficulty"
-                          options={DIFFICULTIES.map((d) => ({ label: d, value: d }))}
-                          value={drillForm.difficulty}
-                          onChange={(e) => updateDrillForm("difficulty", e.target.value)}
-                        />
-                        <Input
-                          label="Duration (minutes)"
-                          value={drillForm.duration}
-                          onChange={(e) => updateDrillForm("duration", e.target.value)}
-                        />
-                      </div>
-
-                      <Textarea
-                        label="Equipment"
-                        value={drillForm.equipment}
-                        onChange={(e) => updateDrillForm("equipment", e.target.value)}
-                      />
-                      <Textarea
-                        label="Setup"
-                        value={drillForm.setup}
-                        onChange={(e) => updateDrillForm("setup", e.target.value)}
-                      />
-                      <Textarea
-                        label="Instructions"
-                        value={drillForm.instructions}
-                        onChange={(e) => updateDrillForm("instructions", e.target.value)}
-                      />
-                      <Textarea
-                        label="Coaching Points"
-                        value={drillForm.coachRole}
-                        onChange={(e) => updateDrillForm("coachRole", e.target.value)}
-                      />
-                      <Textarea
-                        label="Targeted Results"
-                        value={drillForm.targetedResults}
-                        onChange={(e) => updateDrillForm("targetedResults", e.target.value)}
-                      />
-
-                      <div className="flex gap-2 border-t border-gray-200 pt-4">
-                        <Button variant="accent" size="sm" onClick={handleSaveDrill}>
-                          <Save className="mr-1.5 h-3.5 w-3.5" />
-                          Save to Library
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleGenerateDrill}
-                          disabled={generatingDrill}
-                        >
-                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                          Regenerate
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* ============================================================ */}
-              {/* Section 2: AI Session Generator (EXISTING)                    */}
-              {/* ============================================================ */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Sparkles className="h-5 w-5 text-[#1D4ED8]" />
-                    Generate Session with AI
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Input
+                    label="Session Title"
+                    placeholder="e.g. U12 Passing & Movement"
+                    value={sessionTitle}
+                    onChange={(e) => setSessionTitle(e.target.value)}
+                  />
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <Select
                       label="Age Group"
                       options={AGE_GROUPS.map((ag) => ({ label: ag, value: ag }))}
-                      value={ageGroup}
-                      onChange={(e) => setAgeGroup(e.target.value)}
+                      value={sessionAgeGroup}
+                      onChange={(e) => setSessionAgeGroup(e.target.value)}
                     />
                     <Select
                       label="Skill Level"
                       options={SKILL_LEVELS.map((sl) => ({ label: sl, value: sl }))}
-                      value={skillLevel}
-                      onChange={(e) => setSkillLevel(e.target.value)}
+                      value={sessionSkillLevel}
+                      onChange={(e) => setSessionSkillLevel(e.target.value)}
                     />
                     <Select
                       label="Focus Area"
                       options={FOCUS_AREAS.map((fa) => ({ label: fa, value: fa }))}
-                      value={focusArea}
-                      onChange={(e) => setFocusArea(e.target.value)}
+                      value={sessionFocusArea}
+                      onChange={(e) => setSessionFocusArea(e.target.value)}
+                    />
+                    <Select
+                      label="Target Duration"
+                      options={TARGET_DURATIONS.map((d) => ({ label: d, value: d }))}
+                      value={sessionDuration}
+                      onChange={(e) => setSessionDuration(e.target.value)}
                     />
                   </div>
-                  <Button
-                    variant="accent"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                    onClick={handleGenerate}
-                    disabled={generating}
-                  >
-                    {generating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Generate with AI
-                      </>
-                    )}
-                  </Button>
                 </CardContent>
               </Card>
 
-              {/* AI Preview */}
-              {showPreview && (
-                <Card className="border-[#1D4ED8]/30 border-2">
-                  <CardHeader className="bg-blue-50/50">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-[#1D4ED8]" />
-                        {MOCK_AI_SESSION.title}
-                      </CardTitle>
-                      <Badge variant="info">AI Generated</Badge>
-                    </div>
-                    <div className="mt-2 flex gap-3 text-sm text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" />
-                        {MOCK_AI_SESSION.ageGroup}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {MOCK_AI_SESSION.duration}
-                      </span>
+              {/* Two-Panel Layout */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* Left: Available Drills */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Available Drills</CardTitle>
+                    <div className="relative mt-2">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <Input
+                        placeholder="Search drills..."
+                        value={drillSearch}
+                        onChange={(e) => setDrillSearch(e.target.value)}
+                        className="pl-9"
+                      />
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-5 pt-5">
-                    {/* Warm-up */}
+                  <CardContent>
+                    <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                      {availableDrills.length > 0 ? (
+                        availableDrills.map(renderAvailableDrill)
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                          <Target className="mb-2 h-8 w-8" />
+                          <p className="text-sm">No matching drills found.</p>
+                          <p className="text-xs">Try adjusting the age group or search term.</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-3 text-xs text-gray-400">
+                      Showing {availableDrills.length} drill{availableDrills.length !== 1 ? "s" : ""} for {sessionAgeGroup}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {/* Right: Session Plan */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">Session Plan</CardTitle>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-4 w-4 text-gray-400" />
+                        <span className="text-sm font-medium text-[#0B2545]">
+                          {totalDuration} min
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          / {sessionDuration}
+                        </span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    {/* Warm-Up Section */}
                     <div>
                       <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#0B2545]">
                         <Flame className="h-4 w-4 text-orange-500" />
-                        Warm-Up &middot; {MOCK_AI_SESSION.warmUp.duration}
+                        Warm-Up
+                        <span className="text-xs font-normal text-gray-400">(5-10 min)</span>
                       </h4>
-                      <div className="rounded-lg bg-orange-50 p-3">
-                        <p className="text-sm font-medium text-[#0B2545]">{MOCK_AI_SESSION.warmUp.name}</p>
-                        <p className="mt-1 text-sm text-gray-600">{MOCK_AI_SESSION.warmUp.description}</p>
+                      <div className="space-y-2 rounded-lg border-2 border-dashed border-orange-200 bg-orange-50/30 p-3">
+                        {warmUpDrills.length > 0 ? (
+                          warmUpDrills.map((d) => renderSessionDrill(d, "warmUp"))
+                        ) : (
+                          <p className="py-4 text-center text-xs text-gray-400">
+                            Add a warm-up drill from the library
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Main Drills */}
+                    {/* Main Drills Section */}
                     <div>
                       <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#0B2545]">
                         <Dumbbell className="h-4 w-4 text-[#1D4ED8]" />
                         Main Drills
                       </h4>
-                      <div className="space-y-3">
-                        {MOCK_AI_SESSION.drills.map((drill, idx) => (
-                          <div key={idx} className="rounded-lg border border-gray-200 p-3">
-                            <div className="flex items-start gap-3">
-                              <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-400">
-                                <Target className="h-6 w-6" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-sm font-medium text-[#0B2545]">{drill.name}</p>
-                                  <Badge>{drill.duration}</Badge>
-                                </div>
-                                <p className="mt-1 text-sm text-gray-600">{drill.description}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="space-y-2 rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/30 p-3">
+                        {mainDrills.length > 0 ? (
+                          mainDrills.map((d) => renderSessionDrill(d, "main"))
+                        ) : (
+                          <p className="py-4 text-center text-xs text-gray-400">
+                            Add drills from the library to build your session
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Cool-down */}
+                    {/* Cool-Down Section */}
                     <div>
                       <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#0B2545]">
                         <Snowflake className="h-4 w-4 text-sky-500" />
-                        Cool-Down &middot; {MOCK_AI_SESSION.coolDown.duration}
+                        Cool-Down
+                        <span className="text-xs font-normal text-gray-400">(5-10 min)</span>
                       </h4>
-                      <div className="rounded-lg bg-sky-50 p-3">
-                        <p className="text-sm font-medium text-[#0B2545]">{MOCK_AI_SESSION.coolDown.name}</p>
-                        <p className="mt-1 text-sm text-gray-600">{MOCK_AI_SESSION.coolDown.description}</p>
+                      <div className="space-y-2 rounded-lg border-2 border-dashed border-sky-200 bg-sky-50/30 p-3">
+                        {coolDownDrills.length > 0 ? (
+                          coolDownDrills.map((d) => renderSessionDrill(d, "coolDown"))
+                        ) : (
+                          <p className="py-4 text-center text-xs text-gray-400">
+                            Add a cool-down drill from the library
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Coach Notes */}
-                    <div>
-                      <h4 className="mb-2 text-sm font-semibold text-[#0B2545]">Coach Notes</h4>
-                      <div className="rounded-lg bg-gray-50 p-3">
-                        <p className="text-sm text-gray-600">{MOCK_AI_SESSION.coachNotes}</p>
-                      </div>
-                    </div>
-
+                    {/* Action Buttons */}
                     <div className="flex gap-2 border-t border-gray-200 pt-4">
                       <Button variant="accent" size="sm" onClick={handleSaveDraft}>
                         Save as Draft
@@ -743,33 +555,10 @@ export default function SessionBuilderPage() {
                       >
                         Publish Session
                       </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleGenerate}
-                        disabled={generating}
-                      >
-                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                        Regenerate
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>
-              )}
-
-              {!showPreview && !generating && (
-                <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-200 py-16 text-gray-400">
-                  <Sparkles className="mb-3 h-10 w-10" />
-                  <p className="text-sm">Click &ldquo;Generate with AI&rdquo; to create a session plan</p>
-                </div>
-              )}
-
-              {generating && !showPreview && (
-                <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-200 py-16 text-gray-400">
-                  <Loader2 className="mb-3 h-10 w-10 animate-spin text-[#1D4ED8]" />
-                  <p className="text-sm text-gray-500">Generating your session plan...</p>
-                </div>
-              )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>
