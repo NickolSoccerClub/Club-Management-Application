@@ -28,7 +28,15 @@ export interface GradingCriteria {
 export interface GradingDescriptor {
   id: string;
   criteria_id: string;
-  score_level: 1 | 3 | 5 | 7 | 10;
+  /**
+   * Score level on a 1-5 scale:
+   *   1 = Basic level of application
+   *   2 = Between basic and competent
+   *   3 = Can perform the task to the required level
+   *   4 = Between competent and expert
+   *   5 = Expert level for their age group
+   */
+  score_level: 1 | 2 | 3 | 4 | 5;
   descriptor_text: string;
 }
 

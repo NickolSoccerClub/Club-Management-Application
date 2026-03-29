@@ -1,5 +1,6 @@
 -- =============================================================================
 -- Grading System Tables
+-- Score scale: 1-5 (1 = Basic, 3 = Competent, 5 = Expert for age group)
 -- =============================================================================
 
 CREATE TABLE grading_bibs (
@@ -24,7 +25,7 @@ CREATE TABLE grading_criteria (
 CREATE TABLE grading_descriptors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   criteria_id UUID NOT NULL REFERENCES grading_criteria(id) ON DELETE CASCADE,
-  score_level INTEGER NOT NULL CHECK (score_level IN (1,3,5,7,10)),
+  score_level INTEGER NOT NULL CHECK (score_level IN (1,2,3,4,5)),
   descriptor_text TEXT NOT NULL
 );
 
@@ -46,7 +47,7 @@ CREATE TABLE grading_scores (
   player_id UUID NOT NULL REFERENCES players(id),
   assessor_id UUID NOT NULL REFERENCES profiles(id),
   criteria_id UUID NOT NULL REFERENCES grading_criteria(id),
-  score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 10),
+  score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
   notes TEXT,
   video_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
