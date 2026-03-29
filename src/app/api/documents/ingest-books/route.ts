@@ -27,11 +27,14 @@ const COACHING_BOOKS = [
 ];
 
 export async function GET() {
-  // Check if already ingested
-  const { count } = await supabase.from("kb_documents").select("*", { count: "exact", head: true });
-  if (count && count > 0) {
-    return NextResponse.json({ message: "Documents already ingested", count });
+  // Check if chunks already exist (docs may exist without chunks from a failed run)
+  const { count: chunkCount } = await supabase.from("kb_embeddings").select("*", { count: "exact", head: true });
+  if (chunkCount && chunkCount > 0) {
+    return NextResponse.json({ message: "Knowledge already chunked", chunkCount });
   }
+
+  // Check if docs exist (from a prior partial run)
+  const { count: docCount } = await supabase.from("kb_documents").select("*", { count: "exact", head: true });
 
   // Get admin user for uploaded_by
   const { data: adminRole } = await supabase
@@ -44,29 +47,34 @@ export async function GET() {
     return NextResponse.json({ error: "No admin user found" }, { status: 500 });
   }
 
-  // Create document records for all books
-  const docs = [];
-  for (const book of COACHING_BOOKS) {
-    const { data, error } = await supabase
-      .from("kb_documents")
-      .insert({
-        name: book.name,
-        file_url: `library://${book.name}`,
-        file_size: book.fileSize,
-        page_count: book.pageCount,
-        status: "ready",
-        category: book.category,
-        uploaded_by: adminRole.user_id,
-        chunks_generated: Math.ceil(book.pageCount * 2.7), // rough estimate
-      })
-      .select()
-      .single();
-
-    if (data) docs.push(data);
+  // Create document records if they don't exist yet
+  let firstDocId: string | null = null;
+  if (!docCount || docCount === 0) {
+    for (const book of COACHING_BOOKS) {
+      const { data } = await supabase
+        .from("kb_documents")
+        .insert({
+          name: book.name,
+          file_url: `library://${book.name}`,
+          file_size: book.fileSize,
+          page_count: book.pageCount,
+          status: "ready",
+          category: book.category,
+          uploaded_by: adminRole.user_id,
+          chunks_generated: Math.ceil(book.pageCount * 2.7),
+        })
+        .select("id")
+        .single();
+      if (data && !firstDocId) firstDocId = data.id;
+    }
+  } else {
+    // Get first existing doc ID for linking chunks
+    const { data: existingDoc } = await supabase.from("kb_documents").select("id").limit(1).single();
+    firstDocId = existingDoc?.id ?? null;
   }
 
-  // Chunk and store the coaching knowledge context directly (no embeddings for now)
-  if (docs.length > 0) {
+  // Chunk and store the coaching knowledge context directly
+  if (firstDocId) {
     const words = COACHING_KNOWLEDGE_CONTEXT.split(/\s+/);
     const chunks: string[] = [];
     let start = 0;
@@ -80,7 +88,7 @@ export async function GET() {
 
     for (let i = 0; i < chunks.length; i++) {
       await supabase.from("kb_embeddings").insert({
-        document_id: docs[0].id,
+        document_id: firstDocId,
         chunk_text: chunks[i],
         chunk_index: i,
       });
@@ -89,7 +97,7 @@ export async function GET() {
 
   return NextResponse.json({
     message: "Coaching library ingested",
-    documentsCreated: docs.length,
+    documentsCreated: COACHING_BOOKS.length,
     knowledgeChunked: true,
   });
 }
