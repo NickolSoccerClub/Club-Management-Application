@@ -4,7 +4,9 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Users,
   Calendar,
@@ -16,6 +18,10 @@ import {
   ClipboardList,
   Bot,
   ArrowLeft,
+  CheckSquare,
+  Flag,
+  Mail,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CoachTeam } from "./team-selector";
@@ -79,6 +85,17 @@ function getSummaryCards(team: CoachTeam) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Quick actions                                                      */
+/* ------------------------------------------------------------------ */
+
+const QUICK_ACTIONS = [
+  { label: "Take Attendance", icon: CheckSquare, color: "text-[#15803D]", bg: "bg-green-50" },
+  { label: "Start Match Day", icon: Flag, color: "text-[#B45309]", bg: "bg-amber-50" },
+  { label: "Message Parents", icon: Mail, color: "text-[#1D4ED8]", bg: "bg-blue-50" },
+  { label: "Ask Coach Niko", icon: Sparkles, color: "text-[#7C3AED]", bg: "bg-purple-50" },
+];
+
+/* ------------------------------------------------------------------ */
 /*  Placeholder tab content                                           */
 /* ------------------------------------------------------------------ */
 
@@ -93,6 +110,19 @@ function Placeholder({ icon: Icon, title }: { icon: React.ElementType; title: st
 }
 
 /* ------------------------------------------------------------------ */
+/*  Tab label map for toasts                                           */
+/* ------------------------------------------------------------------ */
+
+const TAB_LABELS: Record<string, string> = {
+  roster: "Roster",
+  training: "Training",
+  fixtures: "Fixtures",
+  attendance: "Attendance",
+  messages: "Messages",
+  niko: "Coach Niko",
+};
+
+/* ------------------------------------------------------------------ */
 /*  Dashboard                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -103,6 +133,18 @@ interface DashboardProps {
 
 export function Dashboard({ team, onBack }: DashboardProps) {
   const cards = getSummaryCards(team);
+  const addToast = useToastStore((s) => s.addToast);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  function handleTabChange(value: string) {
+    const label = TAB_LABELS[value] ?? value;
+    addToast(`Switched to ${label}`, "info");
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
@@ -130,63 +172,110 @@ export function Dashboard({ team, onBack }: DashboardProps) {
 
       {/* Summary cards - horizontal scroll on mobile, 3-col grid on tablet+ */}
       <div className="mb-6 -mx-4 px-4 md:mx-0 md:px-0">
-        <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 snap-x">
-          {cards.map((card) => (
-            <Card
-              key={card.label}
-              className="min-w-[160px] shrink-0 snap-start md:min-w-0"
-            >
-              <CardContent className="p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <div
-                    className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-lg",
-                      card.bg
-                    )}
-                  >
-                    <card.icon className={cn("h-4 w-4", card.color)} />
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 snap-x">
+            {cards.map((card) => (
+              <Card
+                key={card.label}
+                className="min-w-[180px] shrink-0 snap-start md:min-w-0 overflow-hidden"
+              >
+                {/* Coloured top accent line */}
+                <div className={cn("h-1 w-full", card.bg)} />
+                <CardContent className="p-4">
+                  <div className="mb-3 flex items-center gap-2.5">
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-lg",
+                        card.bg
+                      )}
+                    >
+                      <card.icon className={cn("h-4.5 w-4.5", card.color)} />
+                    </div>
+                    <span className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                      {card.label}
+                    </span>
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    {card.label}
-                  </span>
-                </div>
-                <p className="text-lg font-semibold text-[#0B2545]">
-                  {card.value}
-                </p>
-                {card.sub && (
-                  <p className="text-xs text-gray-400">{card.sub}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  <p className="text-lg font-semibold text-[#0B2545]">
+                    {card.value}
+                  </p>
+                  {card.sub && (
+                    <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* Quick Actions row */}
+      {!loading && (
+        <div className="mb-6 -mx-4 px-4 md:mx-0 md:px-0">
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-gray-400">
+            Quick Actions
+          </h2>
+          <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-4 md:overflow-visible md:pb-0 snap-x">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className="flex-shrink-0 snap-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]/40 rounded-lg"
+                onClick={() =>
+                  addToast(`${action.label} opened`, "success")
+                }
+              >
+                <Card className="cursor-pointer transition-all hover:shadow-md active:scale-[0.98] min-w-[160px] md:min-w-0">
+                  <CardContent className="flex items-center gap-3 p-4 min-h-[56px]">
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-lg shrink-0",
+                        action.bg
+                      )}
+                    >
+                      <action.icon className={cn("h-4.5 w-4.5", action.color)} />
+                    </div>
+                    <span className="text-sm font-medium text-[#0B2545] whitespace-nowrap">
+                      {action.label}
+                    </span>
+                  </CardContent>
+                </Card>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Navigation tabs */}
-      <Tabs defaultValue="roster">
+      <Tabs defaultValue="roster" onValueChange={handleTabChange}>
         <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
           <TabsList className="w-max md:w-full md:grid md:grid-cols-6 h-auto gap-0.5 p-1">
-            <TabsTrigger value="roster" className="min-h-[44px] gap-1.5 px-3">
+            <TabsTrigger value="roster" className="min-h-[48px] gap-1.5 px-4 text-sm md:text-base">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Roster</span>
             </TabsTrigger>
-            <TabsTrigger value="training" className="min-h-[44px] gap-1.5 px-3">
+            <TabsTrigger value="training" className="min-h-[48px] gap-1.5 px-4 text-sm md:text-base">
               <Dumbbell className="h-4 w-4" />
               <span className="hidden sm:inline">Training</span>
             </TabsTrigger>
-            <TabsTrigger value="fixtures" className="min-h-[44px] gap-1.5 px-3">
+            <TabsTrigger value="fixtures" className="min-h-[48px] gap-1.5 px-4 text-sm md:text-base">
               <Trophy className="h-4 w-4" />
               <span className="hidden sm:inline">Fixtures</span>
             </TabsTrigger>
-            <TabsTrigger value="attendance" className="min-h-[44px] gap-1.5 px-3">
+            <TabsTrigger value="attendance" className="min-h-[48px] gap-1.5 px-4 text-sm md:text-base">
               <ClipboardList className="h-4 w-4" />
               <span className="hidden sm:inline">Attendance</span>
             </TabsTrigger>
-            <TabsTrigger value="messages" className="min-h-[44px] gap-1.5 px-3">
+            <TabsTrigger value="messages" className="min-h-[48px] gap-1.5 px-4 text-sm md:text-base">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Messages</span>
             </TabsTrigger>
-            <TabsTrigger value="niko" className="min-h-[44px] gap-1.5 px-3">
+            <TabsTrigger value="niko" className="min-h-[48px] gap-1.5 px-4 text-sm md:text-base">
               <Bot className="h-4 w-4" />
               <span className="hidden sm:inline">Coach Niko</span>
             </TabsTrigger>

@@ -5,6 +5,9 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Calendar,
   Clock,
@@ -18,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   User,
+  Share2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -133,19 +137,89 @@ function EventIcon({ type }: { type: MatchEvent["type"] }) {
   }
 }
 
+function eventBgColor(type: MatchEvent["type"]) {
+  switch (type) {
+    case "goal":
+      return "bg-[#15803D]/20 border-[#15803D]/30";
+    case "yellow-card":
+      return "bg-yellow-400/20 border-yellow-400/30";
+    case "red-card":
+      return "bg-[#B91C1C]/20 border-[#B91C1C]/30";
+    case "substitution":
+      return "bg-[#1D4ED8]/20 border-[#1D4ED8]/30";
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export function FixturesTab() {
+  const [loading, setLoading] = React.useState(true);
   const [showMatchDay, setShowMatchDay] = React.useState(false);
   const [showLineup, setShowLineup] = React.useState(false);
+  const [confirmEndOpen, setConfirmEndOpen] = React.useState(false);
+  const [scoreFlash, setScoreFlash] = React.useState(false);
+  const addToast = useToastStore((s) => s.addToast);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const starters = ACTIVE_MATCH.lineup.filter((p) => !p.isSub);
   const subs = ACTIVE_MATCH.lineup.filter((p) => p.isSub);
 
+  const handleGoal = () => {
+    setScoreFlash(true);
+    setTimeout(() => setScoreFlash(false), 800);
+    addToast("Goal added!", "success");
+  };
+
+  const handleCard = () => {
+    addToast("Card recorded", "warning");
+  };
+
+  const handleEndMatch = () => {
+    setShowMatchDay(false);
+    addToast("Match ended - result saved", "success");
+  };
+
+  const handleShareResult = (opponent: string) => {
+    addToast("Result shared with parents", "success");
+  };
+
+  /* Loading skeleton */
+  if (loading) {
+    return (
+      <div className="space-y-6 py-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <SkeletonCard />
+        <div className="space-y-2">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 py-4">
+      {/* ---- End Match Confirmation ---- */}
+      <ConfirmDialog
+        open={confirmEndOpen}
+        onOpenChange={(open) => setConfirmEndOpen(open)}
+        onConfirm={handleEndMatch}
+        title="End Match?"
+        description="This will finalize the score and notify parents of the result. This action cannot be undone."
+        confirmLabel="End Match"
+        variant="danger"
+      />
+
       {/* ---- Upcoming Matches ---- */}
       <section>
         <h2 className="mb-3 text-lg font-semibold text-[#0B2545]">
@@ -196,8 +270,9 @@ export function FixturesTab() {
           <h2 className="mb-3 text-lg font-semibold text-[#0B2545]">
             Match Day - Live
           </h2>
-          <Card className="border-[#1D4ED8]/30 bg-gradient-to-b from-[#0B2545] to-[#0B2545]/95">
-            <CardContent className="p-4 md:p-6">
+          <Card className="overflow-hidden border-[#1D4ED8]/30">
+            {/* Dark header with score */}
+            <div className="bg-gradient-to-b from-[#0B2545] to-[#0B2545]/95 p-4 md:p-6">
               {/* Timer */}
               <div className="mb-4 text-center">
                 <p className="text-sm font-medium text-blue-300">
@@ -208,62 +283,86 @@ export function FixturesTab() {
                 </p>
               </div>
 
-              {/* Score */}
-              <div className="mb-6 flex items-center justify-center gap-4">
-                <div className="text-center">
-                  <p className="text-sm font-medium text-blue-200">
+              {/* Score - dramatic & large */}
+              <div
+                className={cn(
+                  "mb-6 flex items-center justify-center gap-6 rounded-2xl bg-white/10 py-6 px-4 transition-all duration-300",
+                  scoreFlash && "ring-2 ring-[#15803D] bg-[#15803D]/20"
+                )}
+              >
+                <div className="text-center min-w-[80px]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-300">
                     Nickol Thunder
                   </p>
-                  <p className="text-5xl font-bold text-white">
+                  <p
+                    className={cn(
+                      "text-6xl md:text-7xl font-black text-white transition-transform duration-300",
+                      scoreFlash && "scale-110"
+                    )}
+                  >
                     {ACTIVE_MATCH.homeScore}
                   </p>
                 </div>
-                <span className="text-2xl font-light text-blue-300">-</span>
-                <div className="text-center">
-                  <p className="text-sm font-medium text-blue-200">
+                <div className="flex flex-col items-center">
+                  <span className="text-3xl font-light text-blue-300/60">vs</span>
+                </div>
+                <div className="text-center min-w-[80px]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-300">
                     {ACTIVE_MATCH.opponent}
                   </p>
-                  <p className="text-5xl font-bold text-white">
+                  <p className="text-6xl md:text-7xl font-black text-white">
                     {ACTIVE_MATCH.awayScore}
                   </p>
                 </div>
               </div>
 
-              {/* Quick action buttons */}
+              {/* Quick action buttons - large for tablet */}
               <div className="mb-6 grid grid-cols-3 gap-3">
-                <Button className="min-h-[56px] flex-col gap-1 bg-[#15803D] hover:bg-[#15803D]/90 text-white text-sm font-semibold">
-                  <CircleDot className="h-5 w-5" />
+                <Button
+                  className="min-h-[56px] flex-col gap-1.5 bg-[#15803D] hover:bg-[#15803D]/90 text-white text-sm font-semibold rounded-xl"
+                  onClick={handleGoal}
+                >
+                  <CircleDot className="h-6 w-6" />
                   Goal
                 </Button>
-                <Button className="min-h-[56px] flex-col gap-1 bg-[#B45309] hover:bg-[#B45309]/90 text-white text-sm font-semibold">
-                  <AlertTriangle className="h-5 w-5" />
+                <Button
+                  className="min-h-[56px] flex-col gap-1.5 bg-[#B45309] hover:bg-[#B45309]/90 text-white text-sm font-semibold rounded-xl"
+                  onClick={handleCard}
+                >
+                  <AlertTriangle className="h-6 w-6" />
                   Card
                 </Button>
-                <Button className="min-h-[56px] flex-col gap-1 bg-[#1D4ED8] hover:bg-[#1D4ED8]/90 text-white text-sm font-semibold">
-                  <ArrowRightLeft className="h-5 w-5" />
+                <Button
+                  className="min-h-[56px] flex-col gap-1.5 bg-[#1D4ED8] hover:bg-[#1D4ED8]/90 text-white text-sm font-semibold rounded-xl"
+                  onClick={() => addToast("Substitution recorded", "info")}
+                >
+                  <ArrowRightLeft className="h-6 w-6" />
                   Sub
                 </Button>
               </div>
 
-              {/* Goal / Event Log */}
-              <div className="mb-4 rounded-lg bg-white/10 p-3">
-                <h4 className="mb-2 text-sm font-semibold text-blue-200">
+              {/* Goal / Event Log - improved visual distinction */}
+              <div className="mb-4 rounded-xl bg-white/10 p-4">
+                <h4 className="mb-3 text-sm font-semibold text-blue-200">
                   Match Events
                 </h4>
                 <div className="space-y-2">
                   {ACTIVE_MATCH.events.map((evt) => (
                     <div
                       key={evt.id}
-                      className="flex items-center gap-3 text-sm text-white/90"
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm text-white/90",
+                        eventBgColor(evt.type)
+                      )}
                     >
-                      <span className="w-8 shrink-0 font-mono text-blue-300">
+                      <span className="w-10 shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-blue-200">
                         {evt.time}
                       </span>
                       <EventIcon type={evt.type} />
-                      <span>
+                      <span className="font-medium">
                         {evt.player}
                         {evt.detail && (
-                          <span className="ml-1 text-blue-300">
+                          <span className="ml-1.5 text-xs font-normal text-blue-300">
                             ({evt.detail})
                           </span>
                         )}
@@ -276,7 +375,7 @@ export function FixturesTab() {
               {/* Lineup toggle */}
               <button
                 type="button"
-                className="mb-2 flex w-full min-h-[44px] items-center justify-between rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-blue-200 hover:bg-white/15 transition-colors"
+                className="mb-2 flex w-full min-h-[48px] items-center justify-between rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-blue-200 hover:bg-white/15 transition-colors"
                 onClick={() => setShowLineup(!showLineup)}
               >
                 <span className="flex items-center gap-2">
@@ -291,7 +390,7 @@ export function FixturesTab() {
               </button>
 
               {showLineup && (
-                <div className="space-y-3 rounded-lg bg-white/10 p-3">
+                <div className="space-y-3 rounded-xl bg-white/10 p-3">
                   <div>
                     <h5 className="mb-2 text-xs font-medium uppercase tracking-wider text-blue-300">
                       Starting XI
@@ -300,7 +399,7 @@ export function FixturesTab() {
                       {starters.map((p) => (
                         <div
                           key={p.jerseyNumber}
-                          className="flex items-center gap-2 rounded bg-white/5 px-2 py-1.5 text-sm text-white/90"
+                          className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 text-sm text-white/90"
                         >
                           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
                             {p.jerseyNumber}
@@ -321,7 +420,7 @@ export function FixturesTab() {
                       {subs.map((p) => (
                         <div
                           key={p.jerseyNumber}
-                          className="flex items-center gap-2 rounded bg-white/5 px-2 py-1.5 text-sm text-white/80"
+                          className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 text-sm text-white/80"
                         >
                           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-xs font-bold">
                             {p.jerseyNumber}
@@ -340,13 +439,13 @@ export function FixturesTab() {
               {/* End Match */}
               <Button
                 variant="secondary"
-                className="mt-4 min-h-[44px] w-full border-[#B91C1C]/50 bg-transparent text-[#B91C1C] hover:bg-[#B91C1C]/10 hover:text-[#B91C1C]"
-                onClick={() => setShowMatchDay(false)}
+                className="mt-4 min-h-[48px] w-full rounded-xl border-[#B91C1C]/50 bg-transparent text-[#FCA5A5] hover:bg-[#B91C1C]/20 hover:text-white font-semibold"
+                onClick={() => setConfirmEndOpen(true)}
               >
                 <Square className="mr-2 h-4 w-4" />
                 End Match
               </Button>
-            </CardContent>
+            </div>
           </Card>
         </section>
       )}
@@ -367,7 +466,7 @@ export function FixturesTab() {
               <Card key={result.id}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-[#0B2545]">
                           vs {result.opponent}
@@ -395,10 +494,18 @@ export function FixturesTab() {
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-3">
                       <p className="text-2xl font-bold text-[#0B2545]">
                         {result.homeScore} - {result.awayScore}
                       </p>
+                      <Button
+                        variant="secondary"
+                        className="ml-2 h-9 w-9 shrink-0 p-0"
+                        onClick={() => handleShareResult(result.opponent)}
+                        aria-label={`Share result vs ${result.opponent}`}
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
