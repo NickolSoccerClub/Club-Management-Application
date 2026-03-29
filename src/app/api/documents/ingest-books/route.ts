@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { ingestDocument } from "@/lib/ai/rag";
 import { COACHING_KNOWLEDGE_CONTEXT } from "@/lib/ai/coaching-knowledge";
 
 const supabase = createClient(
@@ -66,14 +65,26 @@ export async function GET() {
     if (data) docs.push(data);
   }
 
-  // Ingest the coaching knowledge context as chunked text
-  // This is the curated knowledge from all books combined
+  // Chunk and store the coaching knowledge context directly (no embeddings for now)
   if (docs.length > 0) {
-    await ingestDocument({
-      documentId: docs[0].id, // Link to first doc
-      text: COACHING_KNOWLEDGE_CONTEXT,
-      documentName: "Curated Coaching Knowledge",
-    });
+    const words = COACHING_KNOWLEDGE_CONTEXT.split(/\s+/);
+    const chunks: string[] = [];
+    let start = 0;
+    while (start < words.length) {
+      const end = Math.min(start + 400, words.length);
+      const chunk = words.slice(start, end).join(" ");
+      if (chunk.trim().length > 50) chunks.push(chunk);
+      start = end - 40;
+      if (start >= words.length) break;
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      await supabase.from("kb_embeddings").insert({
+        document_id: docs[0].id,
+        chunk_text: chunks[i],
+        chunk_index: i,
+      });
+    }
   }
 
   return NextResponse.json({
