@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToastStore } from "@/lib/stores/toast-store";
 import type { DrillFull } from "@/lib/data/drills";
 import {
   X,
@@ -16,10 +17,13 @@ import {
   MessageSquare,
   Trophy,
   Image,
+  Loader2,
+  RefreshCw,
+  Download,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
-/*  Difficulty helpers                                                  */
+/*  Colour helpers                                                     */
 /* ------------------------------------------------------------------ */
 
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -50,6 +54,51 @@ interface DrillDetailPanelProps {
 }
 
 export function DrillDetailPanel({ drill, open, onClose }: DrillDetailPanelProps) {
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [lastDrillId, setLastDrillId] = useState<string | null>(null);
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Reset image when drill changes
+  if (drill && drill.drill_id !== lastDrillId) {
+    setLastDrillId(drill.drill_id);
+    setGeneratedImage(null);
+  }
+
+  const handleGenerateImage = useCallback(async () => {
+    if (!drill) return;
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/drills/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          drillName: drill.name,
+          description: `${drill.ai_image_description}\n\nDrill setup: ${drill.setup}\nInstructions: ${drill.instructions}`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addToast(data.error || "Failed to generate image", "error");
+        return;
+      }
+      setGeneratedImage(data.image);
+      addToast("Drill diagram generated", "success");
+    } catch {
+      addToast("Failed to generate image", "error");
+    } finally {
+      setGenerating(false);
+    }
+  }, [drill, addToast]);
+
+  const handleDownloadImage = useCallback(() => {
+    if (!generatedImage || !drill) return;
+    const link = document.createElement("a");
+    link.href = generatedImage;
+    link.download = `${drill.drill_id}-${drill.name.replace(/\s+/g, "-").toLowerCase()}.png`;
+    link.click();
+  }, [generatedImage, drill]);
+
   if (!drill) return null;
 
   const instructions = drill.instructions
@@ -102,6 +151,60 @@ export function DrillDetailPanel({ drill, open, onClose }: DrillDetailPanelProps
 
         {/* Content */}
         <div className="px-6 py-5 space-y-6">
+          {/* Drill Diagram Image */}
+          <section>
+            <h4 className="flex items-center gap-2 text-sm font-semibold text-[#0B2545] mb-3">
+              <Image className="h-4 w-4 text-[#1D4ED8]" />
+              Drill Diagram
+            </h4>
+
+            {generatedImage ? (
+              <div className="space-y-3">
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <img
+                    src={generatedImage}
+                    alt={`Tactical diagram for ${drill.name}`}
+                    className="w-full h-auto"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleGenerateImage}
+                    disabled={generating}
+                  >
+                    <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", generating && "animate-spin")} />
+                    Regenerate
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={handleDownloadImage}>
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    Download
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+                {generating ? (
+                  <div className="space-y-3">
+                    <Loader2 className="mx-auto h-8 w-8 text-[#1D4ED8] animate-spin" />
+                    <p className="text-sm font-medium text-[#0B2545]">Generating drill diagram...</p>
+                    <p className="text-xs text-gray-500">This may take 10-15 seconds</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Image className="mx-auto h-8 w-8 text-gray-300" />
+                    <p className="text-sm text-gray-500">No diagram generated yet</p>
+                    <Button variant="accent" size="sm" onClick={handleGenerateImage}>
+                      <Image className="mr-1.5 h-4 w-4" />
+                      Generate Diagram
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Quick stats */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-gray-200 p-3 text-center">
@@ -159,12 +262,16 @@ export function DrillDetailPanel({ drill, open, onClose }: DrillDetailPanelProps
             <p className="text-sm text-[#0B2545] leading-relaxed">{drill.targeted_results}</p>
           </Section>
 
-          {/* AI Image Description */}
-          <Section icon={Image} title="AI Image Prompt">
-            <p className="text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-md p-3 border border-gray-100">
+          {/* AI Image Prompt (collapsible) */}
+          <details className="group">
+            <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-gray-400 hover:text-gray-600">
+              <Image className="h-4 w-4" />
+              AI Image Prompt (technical)
+            </summary>
+            <p className="mt-2 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-md p-3 border border-gray-100">
               {drill.ai_image_description}
             </p>
-          </Section>
+          </details>
         </div>
       </div>
     </>
