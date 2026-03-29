@@ -22,6 +22,7 @@ const TITLE_MAP: Record<string, string> = {
   "/committee/development/drills": "Drill Library",
   "/committee/development/equipment": "Equipment Inventory",
   "/committee/development/knowledge": "Knowledge Base",
+  "/committee/development/grading": "Player Grading",
   "/committee/finance": "Financial Overview",
   "/committee/finance/income": "Income",
   "/committee/finance/expenses": "Expenses",

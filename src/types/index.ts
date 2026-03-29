@@ -9,3 +9,4 @@ export * from "./development";
 export * from "./comms";
 export * from "./committee";
 export * from "./notifications";
+export * from "./grading";
