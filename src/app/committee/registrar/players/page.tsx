@@ -60,9 +60,38 @@ const STATUS_VARIANT: Record<PlayerStatus, "success" | "info" | "warning"> = {
 
 const AGE_GROUPS = ["All", "U10", "U12", "U14", "U16"];
 const STATUSES = ["All", "Registered", "EOI", "Pending"];
+const SORT_OPTIONS = [
+  { label: "Name (A-Z)", value: "name-asc" },
+  { label: "Name (Z-A)", value: "name-desc" },
+  { label: "Grade (Highest First)", value: "grade-desc" },
+  { label: "Grade (Lowest First)", value: "grade-asc" },
+  { label: "Age Group", value: "age-group" },
+];
 
 const ageGroupOptions = AGE_GROUPS.map((ag) => ({ label: ag, value: ag }));
 const statusOptions = STATUSES.map((s) => ({ label: s, value: s }));
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function toFivePoint(score10: number): number {
+  return score10 / 2;
+}
+
+function gradeLabel(score5: number): string {
+  if (score5 >= 4.0) return "Expert";
+  if (score5 >= 3.0) return "Competent";
+  if (score5 >= 2.0) return "Developing";
+  return "Basic";
+}
+
+function gradeBadgeVariant(score5: number): "success" | "info" | "warning" | "danger" {
+  if (score5 >= 4.0) return "success";
+  if (score5 >= 3.0) return "info";
+  if (score5 >= 2.0) return "warning";
+  return "danger";
+}
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -72,6 +101,7 @@ export default function PlayerManagementPage() {
   const [search, setSearch] = useState("");
   const [ageFilter, setAgeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("name-asc");
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<PlayerFull | null>(null);
@@ -88,7 +118,7 @@ export default function PlayerManagementPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    return MOCK_PLAYERS.filter((p) => {
+    const result = MOCK_PLAYERS.filter((p) => {
       const q = search.toLowerCase();
       const matchSearch =
         !q ||
@@ -98,7 +128,27 @@ export default function PlayerManagementPage() {
       const matchStatus = statusFilter === "All" || p.status === statusFilter;
       return matchSearch && matchAge && matchStatus;
     });
-  }, [search, ageFilter, statusFilter]);
+
+    // Sort the filtered results
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case "name-asc":
+          return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+        case "name-desc":
+          return `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`);
+        case "grade-desc":
+          return b.gradeScore - a.gradeScore;
+        case "grade-asc":
+          return a.gradeScore - b.gradeScore;
+        case "age-group":
+          return a.ageGroup.localeCompare(b.ageGroup);
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [search, ageFilter, statusFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
@@ -176,7 +226,7 @@ export default function PlayerManagementPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Age Group</label>
             <Select options={ageGroupOptions} value={ageFilter} onChange={(e) => { setAgeFilter(e.target.value); setPage(1); }} />
@@ -184,6 +234,10 @@ export default function PlayerManagementPage() {
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Status</label>
             <Select options={statusOptions} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Sort By</label>
+            <Select options={SORT_OPTIONS} value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }} />
           </div>
         </div>
       </div>
@@ -213,7 +267,7 @@ export default function PlayerManagementPage() {
 
       {/* Data table */}
       {isLoading ? (
-        <SkeletonTable rows={10} cols={6} />
+        <SkeletonTable rows={10} cols={7} />
       ) : paged.length === 0 ? (
         <EmptyState
           title="No players found"
@@ -236,6 +290,7 @@ export default function PlayerManagementPage() {
                 <th className="px-4 py-3">Age Group</th>
                 <th className="px-4 py-3 hidden sm:table-cell">Team</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Grade</th>
                 <th className="px-4 py-3 hidden md:table-cell">Guardian Email</th>
                 <th className="px-4 py-3 w-12">
                   <span className="sr-only">Actions</span>
@@ -243,48 +298,56 @@ export default function PlayerManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {paged.map((player, idx) => (
-                <tr
-                  key={player.id}
-                  onClick={() => setDetailPlayer(player)}
-                  className={cn(
-                    "border-t border-gray-100 transition-colors hover:bg-blue-50/40 cursor-pointer",
-                    idx % 2 === 1 && "bg-[#F8FAFC]",
-                    selected.has(player.id) && "bg-blue-50"
-                  )}
-                >
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(player.id)}
-                      onChange={() => toggleRow(player.id)}
-                      className="rounded"
-                    />
-                  </td>
-                  <td className="px-4 py-3 font-medium text-[#0B2545]">
-                    {player.firstName} {player.lastName}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{player.ageGroup}</td>
-                  <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">{player.team}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={STATUS_VARIANT[player.status]}>
-                      {player.status}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 hidden md:table-cell">
-                    {player.guardianEmail}
-                  </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setDeleteTarget(player)}
-                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                      aria-label={`Delete ${player.firstName} ${player.lastName}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {paged.map((player, idx) => {
+                const score5 = toFivePoint(player.gradeScore);
+                return (
+                  <tr
+                    key={player.id}
+                    onClick={() => setDetailPlayer(player)}
+                    className={cn(
+                      "border-t border-gray-100 transition-colors hover:bg-blue-50/40 cursor-pointer",
+                      idx % 2 === 1 && "bg-[#F8FAFC]",
+                      selected.has(player.id) && "bg-blue-50"
+                    )}
+                  >
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(player.id)}
+                        onChange={() => toggleRow(player.id)}
+                        className="rounded"
+                      />
+                    </td>
+                    <td className="px-4 py-3 font-medium text-[#0B2545]">
+                      {player.firstName} {player.lastName}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{player.ageGroup}</td>
+                    <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">{player.team}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={STATUS_VARIANT[player.status]}>
+                        {player.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <Badge variant={gradeBadgeVariant(score5)}>
+                        {score5.toFixed(1)} {gradeLabel(score5)}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 hidden md:table-cell">
+                      {player.guardianEmail}
+                    </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setDeleteTarget(player)}
+                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        aria-label={`Delete ${player.firstName} ${player.lastName}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

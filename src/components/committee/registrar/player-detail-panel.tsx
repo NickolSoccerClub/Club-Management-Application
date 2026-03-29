@@ -120,7 +120,15 @@ export function PlayerDetailPanel({ player, open, onClose }: PlayerDetailPanelPr
               <DetailRow label="Age Group" value={player.ageGroup} />
               <DetailRow label="FFA Number" value={player.ffaNumber} icon={Hash} />
               <DetailRow label="Position" value={player.position} />
-              <DetailRow label="Grade Score" value={`${player.gradeScore} / 10`} />
+              <div className="flex items-start justify-between gap-4">
+                <p className="text-xs text-gray-500">Grade Score</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-[#0B2545]">{(player.gradeScore / 2).toFixed(1)} / 5.0</span>
+                  <Badge variant={player.gradeScore / 2 >= 4.0 ? "success" : player.gradeScore / 2 >= 3.0 ? "info" : player.gradeScore / 2 >= 2.0 ? "warning" : "danger"}>
+                    {player.gradeScore / 2 >= 4.0 ? "Expert" : player.gradeScore / 2 >= 3.0 ? "Competent" : player.gradeScore / 2 >= 2.0 ? "Developing" : "Basic"}
+                  </Badge>
+                </div>
+              </div>
               <DetailRow label="Registered" value={player.registeredDate} icon={Calendar} />
             </div>
           </section>

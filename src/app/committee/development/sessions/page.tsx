@@ -28,6 +28,12 @@ import {
   Trash2,
   Search,
   GripVertical,
+  Loader2,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Brain,
+  CheckCircle2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -112,15 +118,99 @@ const CATEGORY_VARIANT: Record<string, "default" | "success" | "warning" | "dang
 };
 
 /* ------------------------------------------------------------------ */
+/*  Team Competency Data                                               */
+/* ------------------------------------------------------------------ */
+
+interface TeamCompetency {
+  team: string;
+  rating: number;
+  skills: Record<string, number>;
+}
+
+const TEAM_COMPETENCY: TeamCompetency[] = [
+  { team: "Nickol Thunder U7", rating: 3.2, skills: { "Ball Familiarity": 3.8, "Movement": 3.5, "Listening": 2.8, "Enthusiasm": 4.1, "Spatial Awareness": 2.3 } },
+  { team: "Nickol Storm U9", rating: 3.5, skills: { "First Touch": 3.2, "Passing": 4.0, "Dribbling": 3.8, "Shooting": 2.6, "Defending": 2.4, "Game Awareness": 3.1, "Communication": 3.5, "Work Rate": 4.2 } },
+  { team: "Nickol Titans U11", rating: 3.1, skills: { "First Touch": 3.4, "Passing": 3.8, "Dribbling": 3.2, "Shooting": 2.4, "Defending": 2.1, "Game Awareness": 2.8, "Communication": 3.0, "Work Rate": 4.1 } },
+  { team: "Nickol Hawks U13", rating: 3.8, skills: { "First Touch": 4.2, "Passing": 4.0, "Dribbling": 3.6, "Shooting": 3.4, "Defending": 3.2, "Game Awareness": 3.8, "Communication": 4.1, "Work Rate": 4.3 } },
+  { team: "Nickol Eagles U15", rating: 3.4, skills: { "First Touch": 3.6, "Passing": 3.8, "Dribbling": 3.2, "Shooting": 3.0, "Defending": 2.8, "Game Awareness": 3.4, "Communication": 3.6, "Work Rate": 4.0 } },
+];
+
+/* ------------------------------------------------------------------ */
+/*  AI Recommendation Types                                            */
+/* ------------------------------------------------------------------ */
+
+interface AIRecommendedPlan {
+  summary: string;
+  warmUp: DrillFull | null;
+  mainDrills: DrillFull[];
+  coolDown: DrillFull | null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function ratingBadgeVariant(score: number): "success" | "info" | "warning" | "danger" {
+  if (score >= 4.0) return "success";
+  if (score >= 3.0) return "info";
+  if (score >= 2.0) return "warning";
+  return "danger";
+}
+
+function ratingColorClass(score: number): string {
+  if (score >= 4.0) return "text-[#15803D]";
+  if (score >= 3.0) return "text-[#1D4ED8]";
+  if (score >= 2.0) return "text-[#B45309]";
+  return "text-[#B91C1C]";
+}
+
+function getWeakestSkills(skills: Record<string, number>, count: number): [string, number][] {
+  return Object.entries(skills)
+    .sort(([, a], [, b]) => a - b)
+    .slice(0, count);
+}
+
+function getStrongestSkills(skills: Record<string, number>, count: number): [string, number][] {
+  return Object.entries(skills)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, count);
+}
+
+/** Map a skill area name to possible drill library categories */
+function skillToDrillCategory(skill: string): string[] {
+  const map: Record<string, string[]> = {
+    "Ball Familiarity": ["Dribbling"],
+    "Movement": ["Dribbling", "Passing"],
+    "Listening": ["Passing"],
+    "Enthusiasm": ["Dribbling"],
+    "Spatial Awareness": ["Dribbling", "Passing"],
+    "First Touch": ["Passing", "Dribbling"],
+    "Passing": ["Passing"],
+    "Dribbling": ["Dribbling"],
+    "Shooting": ["Passing", "Dribbling"],
+    "Defending": ["Passing", "Dribbling"],
+    "Game Awareness": ["Passing"],
+    "Communication": ["Passing"],
+    "Work Rate": ["Dribbling"],
+  };
+  return map[skill] || ["Passing", "Dribbling"];
+}
+
+/* ------------------------------------------------------------------ */
 /*  Age-group mapping helper                                           */
 /* ------------------------------------------------------------------ */
 
 const AGE_GROUP_MAP: Record<string, string[]> = {
   U6: ["4-6"],
+  U7: ["4-6", "7-9"],
   U8: ["4-6", "7-9"],
+  U9: ["7-9"],
   U10: ["7-9", "10-13"],
+  U11: ["10-13"],
   U12: ["10-13"],
+  U13: ["10-13", "14-17"],
   U14: ["10-13", "14-17"],
+  U15: ["14-17"],
   U16: ["14-17"],
 };
 
@@ -128,6 +218,12 @@ function drillMatchesAgeGroup(drill: DrillFull, ageGroup: string): boolean {
   if (!ageGroup) return true;
   const ranges = AGE_GROUP_MAP[ageGroup] || [];
   return ranges.some((range) => drill.age_groups.includes(range));
+}
+
+/** Extract age group from team name like "Nickol Titans U11" -> "U11" */
+function extractAgeGroup(teamName: string): string {
+  const match = teamName.match(/U\d+/);
+  return match ? match[0] : "U12";
 }
 
 /* ------------------------------------------------------------------ */
@@ -151,6 +247,11 @@ export default function SessionBuilderPage() {
   const [warmUpDrills, setWarmUpDrills] = useState<DrillFull[]>([]);
   const [mainDrills, setMainDrills] = useState<DrillFull[]>([]);
   const [coolDownDrills, setCoolDownDrills] = useState<DrillFull[]>([]);
+
+  // AI Recommendation state
+  const [selectedTeam, setSelectedTeam] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPlan, setAiPlan] = useState<AIRecommendedPlan | null>(null);
 
   const addToast = useToastStore((s) => s.addToast);
 
@@ -194,6 +295,11 @@ export default function SessionBuilderPage() {
     return total;
   }, [warmUpDrills, mainDrills, coolDownDrills]);
 
+  // Selected team competency data
+  const selectedTeamData = useMemo(() => {
+    return TEAM_COMPETENCY.find((t) => t.team === selectedTeam) || null;
+  }, [selectedTeam]);
+
   /* ---- Handlers ---- */
 
   const handleDeleteSession = () => {
@@ -219,6 +325,98 @@ export default function SessionBuilderPage() {
     if (section === "warmUp") setWarmUpDrills((prev) => prev.filter((d) => d.drill_id !== drillId));
     else if (section === "main") setMainDrills((prev) => prev.filter((d) => d.drill_id !== drillId));
     else setCoolDownDrills((prev) => prev.filter((d) => d.drill_id !== drillId));
+  };
+
+  /* ---- AI Session Generation ---- */
+
+  const handleGenerateAIPlan = () => {
+    if (!selectedTeamData) return;
+
+    setAiLoading(true);
+    setAiPlan(null);
+
+    setTimeout(() => {
+      const ageGroup = extractAgeGroup(selectedTeamData.team);
+      const weakest = getWeakestSkills(selectedTeamData.skills, 2);
+      const weakCategories = weakest.flatMap(([skill]) => skillToDrillCategory(skill));
+
+      // Get drills matching the age group
+      const ageMatchedDrills = DRILL_LIBRARY.filter((d) => drillMatchesAgeGroup(d, ageGroup));
+
+      // Find drills matching weakness categories
+      const weaknessDrills = ageMatchedDrills.filter((d) =>
+        weakCategories.includes(d.skill_category)
+      );
+
+      // Pick drills for each section (avoid duplicates)
+      const usedIds = new Set<string>();
+
+      // Warm-up: pick a short beginner drill
+      const warmUpCandidates = ageMatchedDrills
+        .filter((d) => d.difficulty === "Beginner" && d.duration_minutes <= 8)
+        .sort((a, b) => a.duration_minutes - b.duration_minutes);
+      const warmUp = warmUpCandidates[0] || ageMatchedDrills[0] || null;
+      if (warmUp) usedIds.add(warmUp.drill_id);
+
+      // Main drills: pick 2-3 from weakness-matched drills
+      const mainCandidates = (weaknessDrills.length > 0 ? weaknessDrills : ageMatchedDrills)
+        .filter((d) => !usedIds.has(d.drill_id));
+      const selectedMain: DrillFull[] = [];
+      for (const drill of mainCandidates) {
+        if (selectedMain.length >= 3) break;
+        if (!usedIds.has(drill.drill_id)) {
+          selectedMain.push(drill);
+          usedIds.add(drill.drill_id);
+        }
+      }
+
+      // Cool-down: pick a short drill
+      const coolDownCandidates = ageMatchedDrills
+        .filter((d) => !usedIds.has(d.drill_id) && d.duration_minutes <= 8)
+        .sort((a, b) => a.duration_minutes - b.duration_minutes);
+      const coolDown = coolDownCandidates[0] || null;
+
+      const weakNames = weakest.map(([name]) => name).join(" and ");
+      const summary = `Based on ${selectedTeamData.team}'s competency profile, this session focuses on ${weakNames} \u2014 the two weakest areas. Drills are selected to build confidence and technique in these areas while maintaining engagement.`;
+
+      setAiPlan({
+        summary,
+        warmUp,
+        mainDrills: selectedMain,
+        coolDown,
+      });
+      setAiLoading(false);
+    }, 1500);
+  };
+
+  const handleApplyAIPlan = () => {
+    if (!aiPlan) return;
+
+    // Clear current session drills and apply AI recommendations
+    const newWarmUp = aiPlan.warmUp ? [aiPlan.warmUp] : [];
+    const newMain = aiPlan.mainDrills;
+    const newCoolDown = aiPlan.coolDown ? [aiPlan.coolDown] : [];
+
+    setWarmUpDrills(newWarmUp);
+    setMainDrills(newMain);
+    setCoolDownDrills(newCoolDown);
+
+    // Update session details based on team
+    if (selectedTeamData) {
+      const ageGroup = extractAgeGroup(selectedTeamData.team);
+      setSessionAgeGroup(ageGroup);
+      const weakest = getWeakestSkills(selectedTeamData.skills, 1);
+      if (weakest.length > 0) {
+        const weakSkill = weakest[0][0];
+        const categories = skillToDrillCategory(weakSkill);
+        // Try to match to a focus area
+        const matchedFocus = FOCUS_AREAS.find((fa) => categories.includes(fa));
+        if (matchedFocus) setSessionFocusArea(matchedFocus);
+      }
+      setSessionTitle(`${selectedTeamData.team} - Targeted Development Session`);
+    }
+
+    addToast("AI session plan applied to builder", "success");
   };
 
   /* ---- Drill row in the available list ---- */
@@ -398,6 +596,198 @@ export default function SessionBuilderPage() {
           {/* ============================================================ */}
           <TabsContent value="build">
             <div className="space-y-6">
+              {/* AI Session Recommendation */}
+              <Card className="border-[#1D4ED8]/20 bg-gradient-to-br from-blue-50/50 to-white">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1D4ED8]/10">
+                      <Brain className="h-4 w-4 text-[#1D4ED8]" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">AI Session Recommendation</CardTitle>
+                      <p className="text-xs text-gray-500 mt-0.5">Generate a session plan tailored to your team&apos;s competency profile</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Team Selector */}
+                  <div className="max-w-sm">
+                    <Select
+                      label="Select Team"
+                      options={[
+                        { label: "Choose a team...", value: "" },
+                        ...TEAM_COMPETENCY.map((t) => ({ label: t.team, value: t.team })),
+                      ]}
+                      value={selectedTeam}
+                      onChange={(e) => {
+                        setSelectedTeam(e.target.value);
+                        setAiPlan(null);
+                      }}
+                    />
+                  </div>
+
+                  {/* Team Competency Display */}
+                  {selectedTeamData && (
+                    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
+                      {/* Rating row */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-[#0B2545]">{selectedTeamData.team}</p>
+                            <p className="text-xs text-gray-500">Team Overall Rating</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-2xl font-bold ${ratingColorClass(selectedTeamData.rating)}`}>
+                            {selectedTeamData.rating.toFixed(1)}
+                          </span>
+                          <span className="text-sm text-gray-400">/ 5.0</span>
+                          <Badge variant={ratingBadgeVariant(selectedTeamData.rating)}>
+                            {selectedTeamData.rating >= 4.0 ? "Strong" : selectedTeamData.rating >= 3.0 ? "Developing" : "Needs Work"}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Skills breakdown */}
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {/* Weakest Areas */}
+                        <div className="rounded-lg border border-red-100 bg-red-50/30 p-3">
+                          <h5 className="flex items-center gap-1.5 text-xs font-semibold text-[#B91C1C] mb-2">
+                            <TrendingDown className="h-3.5 w-3.5" />
+                            Weakest Areas
+                          </h5>
+                          <div className="space-y-1.5">
+                            {getWeakestSkills(selectedTeamData.skills, 2).map(([skill, score]) => (
+                              <div key={skill} className="flex items-center justify-between text-sm">
+                                <span className="text-gray-700">{skill}</span>
+                                <Badge variant="danger">{score.toFixed(1)}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Strongest Areas */}
+                        <div className="rounded-lg border border-green-100 bg-green-50/30 p-3">
+                          <h5 className="flex items-center gap-1.5 text-xs font-semibold text-[#15803D] mb-2">
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            Strongest Areas
+                          </h5>
+                          <div className="space-y-1.5">
+                            {getStrongestSkills(selectedTeamData.skills, 2).map(([skill, score]) => (
+                              <div key={skill} className="flex items-center justify-between text-sm">
+                                <span className="text-gray-700">{skill}</span>
+                                <Badge variant="success">{score.toFixed(1)}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Generate Button */}
+                      <Button
+                        variant="accent"
+                        size="sm"
+                        onClick={handleGenerateAIPlan}
+                        disabled={aiLoading}
+                        className="w-full sm:w-auto"
+                      >
+                        {aiLoading ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                            Generating Session Plan...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-1.5 h-4 w-4" />
+                            Generate AI Session Plan
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* AI Generated Plan */}
+                  {aiPlan && (
+                    <div className="rounded-lg border border-[#1D4ED8]/20 bg-blue-50/30 p-4 space-y-4">
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#1D4ED8]" />
+                        <p className="text-sm text-gray-700">{aiPlan.summary}</p>
+                      </div>
+
+                      {/* Recommended Drills */}
+                      <div className="space-y-3">
+                        {/* Warm-Up */}
+                        {aiPlan.warmUp && (
+                          <div className="rounded-lg border border-orange-200 bg-orange-50/30 p-3">
+                            <h5 className="flex items-center gap-1.5 text-xs font-semibold text-[#B45309] mb-1.5">
+                              <Flame className="h-3.5 w-3.5" />
+                              Warm-Up
+                            </h5>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-[#0B2545]">{aiPlan.warmUp.name}</p>
+                                <p className="text-xs text-gray-500">{aiPlan.warmUp.duration_minutes} min &middot; {aiPlan.warmUp.difficulty}</p>
+                              </div>
+                              <Badge variant={CATEGORY_VARIANT[aiPlan.warmUp.skill_category] || "default"} className="text-xs">
+                                {aiPlan.warmUp.skill_category}
+                              </Badge>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Main Drills */}
+                        {aiPlan.mainDrills.length > 0 && (
+                          <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3">
+                            <h5 className="flex items-center gap-1.5 text-xs font-semibold text-[#1D4ED8] mb-1.5">
+                              <Dumbbell className="h-3.5 w-3.5" />
+                              Main Drills ({aiPlan.mainDrills.length})
+                            </h5>
+                            <div className="space-y-2">
+                              {aiPlan.mainDrills.map((drill) => (
+                                <div key={drill.drill_id} className="flex items-center justify-between rounded-md bg-white/60 px-2.5 py-1.5">
+                                  <div>
+                                    <p className="text-sm font-medium text-[#0B2545]">{drill.name}</p>
+                                    <p className="text-xs text-gray-500">{drill.duration_minutes} min &middot; {drill.difficulty}</p>
+                                  </div>
+                                  <Badge variant={CATEGORY_VARIANT[drill.skill_category] || "default"} className="text-xs">
+                                    {drill.skill_category}
+                                  </Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cool-Down */}
+                        {aiPlan.coolDown && (
+                          <div className="rounded-lg border border-sky-200 bg-sky-50/30 p-3">
+                            <h5 className="flex items-center gap-1.5 text-xs font-semibold text-sky-700 mb-1.5">
+                              <Snowflake className="h-3.5 w-3.5" />
+                              Cool-Down
+                            </h5>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-[#0B2545]">{aiPlan.coolDown.name}</p>
+                                <p className="text-xs text-gray-500">{aiPlan.coolDown.duration_minutes} min &middot; {aiPlan.coolDown.difficulty}</p>
+                              </div>
+                              <Badge variant={CATEGORY_VARIANT[aiPlan.coolDown.skill_category] || "default"} className="text-xs">
+                                {aiPlan.coolDown.skill_category}
+                              </Badge>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Apply Button */}
+                      <Button variant="accent" size="sm" onClick={handleApplyAIPlan}>
+                        <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                        Apply to Session
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Session Details Form */}
               <Card>
                 <CardHeader>

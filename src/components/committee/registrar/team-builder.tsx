@@ -14,6 +14,7 @@ import {
   Minus,
   Users,
   CheckCircle2,
+  Star,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -47,6 +48,37 @@ interface TeamBuilderProps {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function toFivePoint(score10: number): number {
+  return score10 / 2;
+}
+
+function gradeColorClass(score5: number): string {
+  if (score5 >= 4.0) return "text-[#15803D]";
+  if (score5 >= 3.0) return "text-[#1D4ED8]";
+  if (score5 >= 2.0) return "text-[#B45309]";
+  return "text-[#B91C1C]";
+}
+
+function gradeBadgeVariant(score5: number): "success" | "info" | "warning" | "danger" {
+  if (score5 >= 4.0) return "success";
+  if (score5 >= 3.0) return "info";
+  if (score5 >= 2.0) return "warning";
+  return "danger";
+}
+
+function teamLabel(scores5: number[]): string {
+  if (scores5.length < 2) return "N/A";
+  const avg = scores5.reduce((a, b) => a + b, 0) / scores5.length;
+  const stdDev = Math.sqrt(scores5.reduce((sum, s) => sum + (s - avg) ** 2, 0) / scores5.length);
+  if (stdDev > 0.8) return "Top Heavy";
+  if (avg < 3.0) return "Developing";
+  return "Balanced";
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -76,6 +108,14 @@ export function TeamBuilder({ open, onClose, team, availablePlayers, onSubmit }:
       })
       .sort((a, b) => b.gradeScore - a.gradeScore);
   }, [team, availablePlayers, rosterIds, search]);
+
+  /* ---- Team Rating Calculation ---- */
+  const teamRating = useMemo(() => {
+    if (roster.length === 0) return { avg: 0, scores: [] as number[] };
+    const scores = roster.map((p) => toFivePoint(p.gradeScore));
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    return { avg, scores };
+  }, [roster]);
 
   const addPlayer = (player: TeamPlayer) => {
     if (team && roster.length >= team.capacity) {
@@ -171,35 +211,35 @@ export function TeamBuilder({ open, onClose, team, availablePlayers, onSubmit }:
                       </td>
                     </tr>
                   ) : (
-                    filteredAvailable.map((player, idx) => (
-                      <tr
-                        key={player.id}
-                        className={cn(
-                          "border-b border-gray-100 transition-colors hover:bg-blue-50/40",
-                          idx % 2 === 1 && "bg-gray-50/50"
-                        )}
-                      >
-                        <td className="px-4 py-2.5 font-medium text-[#0B2545]">{player.name}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{player.position}</td>
-                        <td className="px-4 py-2.5 text-right">
-                          <span className={cn(
-                            "font-semibold",
-                            player.gradeScore >= 8 ? "text-[#15803D]" : player.gradeScore >= 6 ? "text-[#1D4ED8]" : "text-[#B45309]"
-                          )}>
-                            {player.gradeScore.toFixed(1)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <button
-                            onClick={() => addPlayer(player)}
-                            className="flex h-7 w-7 items-center justify-center rounded-md bg-[#1D4ED8] text-white hover:bg-[#1D4ED8]/80 transition-colors"
-                            aria-label={`Add ${player.name}`}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    filteredAvailable.map((player, idx) => {
+                      const score5 = toFivePoint(player.gradeScore);
+                      return (
+                        <tr
+                          key={player.id}
+                          className={cn(
+                            "border-b border-gray-100 transition-colors hover:bg-blue-50/40",
+                            idx % 2 === 1 && "bg-gray-50/50"
+                          )}
+                        >
+                          <td className="px-4 py-2.5 font-medium text-[#0B2545]">{player.name}</td>
+                          <td className="px-4 py-2.5 text-gray-600">{player.position}</td>
+                          <td className="px-4 py-2.5 text-right">
+                            <Badge variant={gradeBadgeVariant(score5)} className="font-semibold">
+                              {score5.toFixed(1)}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <button
+                              onClick={() => addPlayer(player)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md bg-[#1D4ED8] text-white hover:bg-[#1D4ED8]/80 transition-colors"
+                              aria-label={`Add ${player.name}`}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -237,6 +277,49 @@ export function TeamBuilder({ open, onClose, team, availablePlayers, onSubmit }:
                   style={{ width: `${Math.min((roster.length / team.capacity) * 100, 100)}%` }}
                 />
               </div>
+
+              {/* Team Rating Card */}
+              <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Star className="h-4 w-4 text-[#B45309]" />
+                    <span className="text-sm font-semibold text-[#0B2545]">Team Rating</span>
+                  </div>
+                  {roster.length > 0 ? (
+                    <Badge variant={gradeBadgeVariant(teamRating.avg)}>
+                      {teamLabel(teamRating.scores)}
+                    </Badge>
+                  ) : (
+                    <Badge>No Players</Badge>
+                  )}
+                </div>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className={cn(
+                    "text-2xl font-bold",
+                    roster.length > 0 ? gradeColorClass(teamRating.avg) : "text-gray-300"
+                  )}>
+                    {roster.length > 0 ? teamRating.avg.toFixed(1) : "—"}
+                  </span>
+                  <span className="text-sm text-gray-400">/ 5.0</span>
+                </div>
+                {roster.length > 0 && (
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all duration-300",
+                        teamRating.avg >= 4.0
+                          ? "bg-[#15803D]"
+                          : teamRating.avg >= 3.0
+                          ? "bg-[#1D4ED8]"
+                          : teamRating.avg >= 2.0
+                          ? "bg-[#B45309]"
+                          : "bg-[#B91C1C]"
+                      )}
+                      style={{ width: `${Math.min((teamRating.avg / 5) * 100, 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto">
               <table className="w-full text-sm">
@@ -257,31 +340,36 @@ export function TeamBuilder({ open, onClose, team, availablePlayers, onSubmit }:
                       </td>
                     </tr>
                   ) : (
-                    roster.map((player, idx) => (
-                      <tr
-                        key={player.id}
-                        className={cn(
-                          "border-b border-gray-100 transition-colors hover:bg-red-50/30",
-                          idx % 2 === 1 && "bg-gray-50/50"
-                        )}
-                      >
-                        <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{idx + 1}</td>
-                        <td className="px-4 py-2.5 font-medium text-[#0B2545]">{player.name}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{player.position}</td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-[#0B2545]">
-                          {player.gradeScore.toFixed(1)}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <button
-                            onClick={() => removePlayer(player.id)}
-                            className="flex h-7 w-7 items-center justify-center rounded-md bg-[#B91C1C] text-white hover:bg-[#B91C1C]/80 transition-colors"
-                            aria-label={`Remove ${player.name}`}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    roster.map((player, idx) => {
+                      const score5 = toFivePoint(player.gradeScore);
+                      return (
+                        <tr
+                          key={player.id}
+                          className={cn(
+                            "border-b border-gray-100 transition-colors hover:bg-red-50/30",
+                            idx % 2 === 1 && "bg-gray-50/50"
+                          )}
+                        >
+                          <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{idx + 1}</td>
+                          <td className="px-4 py-2.5 font-medium text-[#0B2545]">{player.name}</td>
+                          <td className="px-4 py-2.5 text-gray-600">{player.position}</td>
+                          <td className="px-4 py-2.5 text-right">
+                            <Badge variant={gradeBadgeVariant(score5)} className="font-semibold">
+                              {score5.toFixed(1)}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <button
+                              onClick={() => removePlayer(player.id)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md bg-[#B91C1C] text-white hover:bg-[#B91C1C]/80 transition-colors"
+                              aria-label={`Remove ${player.name}`}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
