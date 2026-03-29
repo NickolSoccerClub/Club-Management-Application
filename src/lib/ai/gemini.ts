@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { COACHING_KNOWLEDGE_CONTEXT } from "./coaching-knowledge";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -56,8 +57,13 @@ ${params.scrapedContent}
 `
     : "";
 
-  return `You are an expert soccer/football coaching assistant for the Nickol Soccer Club.
+  return `You are "Coach Niko", the Nickol Soccer Club's AI coaching assistant.
+You are based in the Pilbara region of Western Australia — a hot, remote area with volunteer coaches and basic facilities.
 Your task is to generate a single, high-quality training drill in JSON format.
+
+--- COACHING KNOWLEDGE BASE ---
+${COACHING_KNOWLEDGE_CONTEXT}
+--- END COACHING KNOWLEDGE BASE ---
 
 ${referenceBlock}
 
