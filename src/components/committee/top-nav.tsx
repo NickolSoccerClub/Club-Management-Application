@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,6 +9,7 @@ import {
   LogOut,
   ChevronRight,
 } from "lucide-react";
+import { NotificationPanel, getUnreadCount } from "@/components/committee/notification-panel";
 
 /* ------------------------------------------------------------------ */
 /*  Breadcrumb                                                         */
@@ -62,7 +63,8 @@ export function TopNav({
   pageTitle = "Dashboard",
   breadcrumbs = [],
 }: TopNavProps) {
-  const unreadCount = 3; // demo value
+  const [notifOpen, setNotifOpen] = useState(false);
+  const unreadCount = getUnreadCount();
 
   return (
     <div
@@ -97,18 +99,26 @@ export function TopNav({
 
         {/* Right: bell + user + logout */}
         <div className="flex items-center gap-2 lg:gap-4">
-          {/* Notification bell */}
-          <button
-            className="relative flex h-9 w-9 items-center justify-center rounded-md text-white/70 hover:bg-white/10 hover:text-white"
-            aria-label={`Notifications (${unreadCount} unread)`}
-          >
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[10px] font-bold text-white">
-                {unreadCount}
-              </span>
-            )}
-          </button>
+          {/* Notification bell + panel */}
+          <div className="relative">
+            <button
+              onClick={() => setNotifOpen((prev) => !prev)}
+              className="relative flex h-9 w-9 items-center justify-center rounded-md text-white/70 hover:bg-white/10 hover:text-white"
+              aria-label={`Notifications (${unreadCount} unread)`}
+            >
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[10px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            <NotificationPanel
+              open={notifOpen}
+              onClose={() => setNotifOpen(false)}
+            />
+          </div>
 
           {/* User avatar + info */}
           <div className="hidden sm:flex items-center gap-2.5">
