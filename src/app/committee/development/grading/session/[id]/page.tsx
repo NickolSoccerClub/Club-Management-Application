@@ -24,22 +24,33 @@ import {
 // Mock session players keyed by "{colour}-{number}"
 // ---------------------------------------------------------------------------
 
+// Bibs are auto-assigned rotating through colours:
+// Registration order: Player 1→Blue 1, Player 2→Red 1, Player 3→Green 1,
+// Player 4→Orange 1, Player 5→Pink 1, Player 6→Blue 2, Player 7→Red 2, etc.
+// This creates natural grading groups — all Blues graded together, all Reds together.
 const MOCK_BIB_PLAYERS: Record<
   string,
   { name: string; ageGroup: string; team: string }
 > = {
-  "blue-1": { name: "Liam Carter", ageGroup: "U12", team: "Sharks" },
-  "blue-2": { name: "Emma Nguyen", ageGroup: "U12", team: "Sharks" },
-  "blue-3": { name: "Lucas Thomas", ageGroup: "U12", team: "Sharks" },
-  "red-1": { name: "Noah Patel", ageGroup: "U12", team: "Eagles" },
-  "red-2": { name: "William Brown", ageGroup: "U12", team: "Eagles" },
-  "red-3": { name: "Mia Jackson", ageGroup: "U12", team: "Eagles" },
-  "green-1": { name: "Olivia Bennett", ageGroup: "U12", team: "Dolphins" },
-  "green-2": { name: "Charlotte Jones", ageGroup: "U12", team: "Dolphins" },
-  "orange-1": { name: "Oliver Smith", ageGroup: "U12", team: "Thunder" },
-  "orange-2": { name: "James Taylor", ageGroup: "U12", team: "Thunder" },
-  "pink-1": { name: "Sophia Anderson", ageGroup: "U12", team: "Dolphins" },
-  "pink-2": { name: "Henry White", ageGroup: "U12", team: "Unallocated" },
+  // Group Blue (graded together)
+  "blue-1": { name: "Liam Carter", ageGroup: "U11", team: "Titans" },
+  "blue-2": { name: "Charlotte Jones", ageGroup: "U11", team: "Titans" },
+  "blue-3": { name: "Evelyn Garcia", ageGroup: "U11", team: "Titans" },
+  // Group Red (graded together)
+  "red-1": { name: "Olivia Bennett", ageGroup: "U11", team: "Titans" },
+  "red-2": { name: "Benjamin Martinez", ageGroup: "U11", team: "Titans" },
+  "red-3": { name: "Abigail Robinson", ageGroup: "U11", team: "Titans" },
+  // Group Green (graded together)
+  "green-1": { name: "Noah Patel", ageGroup: "U11", team: "Titans" },
+  "green-2": { name: "Mia Jackson", ageGroup: "U11", team: "Titans" },
+  "green-3": { name: "Jack Clark", ageGroup: "U11", team: "Titans" },
+  // Group Orange (graded together)
+  "orange-1": { name: "Emma Nguyen", ageGroup: "U11", team: "Titans" },
+  "orange-2": { name: "Henry White", ageGroup: "U11", team: "Titans" },
+  "orange-3": { name: "Emily Lewis", ageGroup: "U11", team: "Titans" },
+  // Group Pink (graded together)
+  "pink-1": { name: "Oliver Smith", ageGroup: "U11", team: "Titans" },
+  "pink-2": { name: "Sophia Anderson", ageGroup: "U11", team: "Titans" },
 };
 
 const TOTAL_PLAYERS = Object.keys(MOCK_BIB_PLAYERS).length;
