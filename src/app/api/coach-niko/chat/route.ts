@@ -1,21 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { buildRAGContext } from "@/lib/ai/rag";
 import { COACHING_KNOWLEDGE_CONTEXT } from "@/lib/ai/coaching-knowledge";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
-  const { message, ageGroup, conversationHistory } = await req.json();
+  try {
+    const { message, ageGroup, conversationHistory } = await req.json();
 
-  if (!message) {
-    return NextResponse.json({ error: "message is required" }, { status: 400 });
-  }
+    if (!message) {
+      return NextResponse.json({ error: "message is required" }, { status: 400 });
+    }
 
-  // Retrieve relevant coaching knowledge via RAG
-  const ragContext = await buildRAGContext(message);
+    // Try RAG retrieval but don't fail if it errors
+    let ragContext = "";
+    try {
+      const { buildRAGContext } = await import("@/lib/ai/rag");
+      ragContext = await buildRAGContext(message);
+    } catch {
+      // RAG not available yet — use coaching knowledge context only
+    }
 
-  const systemPrompt = `You are "Coach Niko", the AI coaching assistant for Nickol Soccer Club in the Pilbara region of Western Australia.
+    const systemPrompt = `You are "Coach Niko", the AI coaching assistant for Nickol Soccer Club in the Pilbara region of Western Australia.
 
 You help volunteer coaches with:
 - Training session planning and drill recommendations
@@ -43,34 +49,36 @@ Respond in a friendly, encouraging tone. Use Australian English. Be specific and
 If recommending drills, describe them step-by-step.
 Keep responses concise but thorough — coaches are busy volunteers.`;
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-  // Build conversation
-  const contents = [];
+    const contents = [];
 
-  // Add conversation history if provided
-  if (conversationHistory && Array.isArray(conversationHistory)) {
-    for (const msg of conversationHistory) {
-      contents.push({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
-      });
+    if (conversationHistory && Array.isArray(conversationHistory)) {
+      for (const msg of conversationHistory) {
+        contents.push({
+          role: msg.role === "user" ? "user" : "model",
+          parts: [{ text: msg.content }],
+        });
+      }
     }
+
+    contents.push({
+      role: "user",
+      parts: [{ text: message }],
+    });
+
+    const result = await model.generateContent({
+      systemInstruction: systemPrompt,
+      contents,
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    });
+
+    const response = result.response.text();
+
+    return NextResponse.json({ response, ragChunksUsed: !!ragContext });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Coach Niko chat error:", msg);
+    return NextResponse.json({ error: `Chat failed: ${msg}` }, { status: 500 });
   }
-
-  // Add current message
-  contents.push({
-    role: "user",
-    parts: [{ text: message }],
-  });
-
-  const result = await model.generateContent({
-    systemInstruction: systemPrompt,
-    contents,
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-  });
-
-  const response = result.response.text();
-
-  return NextResponse.json({ response, ragChunksUsed: ragContext ? true : false });
 }
