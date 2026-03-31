@@ -1,155 +1,200 @@
 "use client";
 
-import * as React from "react";
+import React, { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { ActiveChildContext, MOCK_CHILDREN, type ParentChild } from "@/components/parent/active-child-context";
 import {
-  Bell,
-  Settings,
   Home,
   Calendar,
   BarChart3,
   Camera,
-  Cog,
+  Settings,
+  Bell,
+  ChevronLeft,
 } from "lucide-react";
-import { ParentNavProvider } from "@/components/parent/parent-nav-context";
 
 /* ------------------------------------------------------------------ */
-/*  Bottom / top nav items                                            */
+/*  Route → title mapping                                              */
+/* ------------------------------------------------------------------ */
+
+const TITLES: Record<string, string> = {
+  "/parent": "Home",
+  "/parent/schedule": "Schedule",
+  "/parent/stats": "Player Stats",
+  "/parent/media": "Media",
+  "/parent/settings": "Settings",
+  "/parent/messages": "Messages",
+};
+
+function getPageTitle(pathname: string): string {
+  if (TITLES[pathname]) return TITLES[pathname];
+  if (/^\/parent\/schedule\/.+$/.test(pathname)) return "Event Details";
+  if (/^\/parent\/stats\/.+$/.test(pathname)) return "Player Stats";
+  return "Home";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Children + context imported from shared module                     */
+/* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/*  Bottom nav items                                                   */
 /* ------------------------------------------------------------------ */
 
 const NAV_ITEMS = [
-  { id: "overview", label: "Overview", icon: Home },
-  { id: "schedule", label: "Schedule", icon: Calendar },
-  { id: "stats", label: "Stats", icon: BarChart3 },
-  { id: "media", label: "Media", icon: Camera },
-  { id: "settings", label: "Settings", icon: Cog },
+  { label: "Home", href: "/parent", icon: Home },
+  { label: "Schedule", href: "/parent/schedule", icon: Calendar },
+  { label: "Stats", href: "/parent/stats", icon: BarChart3 },
+  { label: "Media", href: "/parent/media", icon: Camera },
+  { label: "Settings", href: "/parent/settings", icon: Settings },
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Layout                                                            */
+/*  Layout component                                                   */
 /* ------------------------------------------------------------------ */
-
-const MOCK_CHILDREN = [
-  { id: "child-1", name: "Emma" },
-  { id: "child-2", name: "Jack" },
-];
 
 export default function ParentLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [activeTab, setActiveTab] = React.useState("overview");
-  const [activeChildId, setActiveChildId] = React.useState(MOCK_CHILDREN[0].id);
+  const [activeChildId, setActiveChildId] = useState(MOCK_CHILDREN[0].id);
+  const pathname = usePathname();
+
+  const isHome = pathname === "/parent";
+  const pageTitle = getPageTitle(pathname);
+  const activeChild = MOCK_CHILDREN.find((c) => c.id === activeChildId) ?? MOCK_CHILDREN[0];
+  const notificationCount = 3;
+
+  function isActive(href: string) {
+    if (href === "/parent") return pathname === "/parent";
+    return pathname.startsWith(href);
+  }
 
   return (
-    <ParentNavProvider
-      value={{
-        activeTab,
-        setActiveTab,
-        children: MOCK_CHILDREN,
-        activeChildId,
-        setActiveChildId,
-      }}
-    >
-      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
-        {/* Top bar */}
-        <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-          <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-            {/* Child switcher tabs */}
-            <div className="flex items-center gap-1">
-              {MOCK_CHILDREN.map((child) => (
+    <ActiveChildContext.Provider value={{ activeChild, setActiveChildId, children: MOCK_CHILDREN }}>
+      <div className="min-h-screen bg-gray-50">
+        {/* ---- Sticky header ---- */}
+        <header className="sticky top-0 z-40 h-14 border-b border-gray-200 bg-white">
+          <div className="mx-auto flex h-full max-w-3xl items-center justify-between px-4">
+            {/* Left: Back arrow or logo */}
+            <div className="flex items-center gap-2">
+              {isHome ? (
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0B2545]">
+                  <span className="text-[10px] font-bold text-white">NSC</span>
+                </div>
+              ) : (
+                <Link
+                  href="/parent"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
+                  aria-label="Back to Home"
+                >
+                  <ChevronLeft className="h-5 w-5 text-gray-700" />
+                </Link>
+              )}
+
+              {/* Center: Page title */}
+              <h1 className="text-base font-semibold text-[#0B2545]">
+                {isHome ? "Nickol SC" : pageTitle}
+              </h1>
+            </div>
+
+            {/* Right: Notification bell */}
+            <button
+              type="button"
+              className="relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
+              aria-label="Notifications"
+            >
+              <Bell className="h-5 w-5 text-gray-600" />
+              {notificationCount > 0 && (
+                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#E11D48] px-1 text-[9px] font-bold text-white">
+                  {notificationCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* ---- Child switcher ---- */}
+        <div className="sticky top-14 z-30 h-12 border-b border-gray-200 bg-gray-50">
+          <div className="mx-auto flex h-full max-w-3xl items-center gap-0 px-4">
+            {MOCK_CHILDREN.map((child) => {
+              const isSelected = child.id === activeChildId;
+              return (
                 <button
                   key={child.id}
                   type="button"
                   className={cn(
-                    "rounded-full px-3 py-1.5 text-sm font-medium transition-colors min-h-[36px]",
-                    activeChildId === child.id
-                      ? "bg-[#0B2545] text-white"
-                      : "text-gray-500 hover:bg-gray-100"
+                    "relative flex h-full items-center gap-1.5 px-4 text-sm font-medium transition-colors",
+                    "min-h-[48px]",
+                    isSelected
+                      ? "text-[#0B2545]"
+                      : "text-gray-400 hover:text-gray-600"
                   )}
                   onClick={() => setActiveChildId(child.id)}
                 >
-                  {child.name}
-                </button>
-              ))}
-            </div>
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white",
+                    )}
+                    style={{ backgroundColor: isSelected ? child.color : "#9CA3AF" }}
+                  >
+                    {child.initials}
+                  </span>
+                  <span>{child.name}</span>
+                  <Badge
+                    variant={isSelected ? "info" : "default"}
+                    className="text-[10px]"
+                  >
+                    {child.ageGroup}
+                  </Badge>
 
-            {/* Right icons */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className="relative flex h-11 w-11 items-center justify-center rounded-lg hover:bg-gray-100"
-                aria-label="Notifications"
-              >
-                <Bell className="h-5 w-5 text-gray-600" />
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#E11D48]" />
-              </button>
-              <button
-                type="button"
-                className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-gray-100"
-                aria-label="Settings"
-              >
-                <Settings className="h-5 w-5 text-gray-600" />
-              </button>
-            </div>
+                  {/* Active underline */}
+                  {isSelected && (
+                    <span
+                      className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                      style={{ backgroundColor: child.color }}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {/* Top tab nav - tablet/desktop only */}
-          <nav className="hidden md:block border-t border-gray-100">
-            <div className="mx-auto flex max-w-3xl items-center gap-1 px-4">
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
+        {/* ---- Main content ---- */}
+        <main className="mx-auto max-w-3xl px-4 py-5 pb-24">{children}</main>
+
+        {/* ---- Bottom navigation bar ---- */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.06)]">
+          <div className="mx-auto flex h-16 max-w-lg items-center justify-around">
+            {NAV_ITEMS.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
                   className={cn(
-                    "flex items-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors min-h-[44px]",
-                    activeTab === item.id
-                      ? "border-[#0B2545] text-[#0B2545]"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
+                    "flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-[10px] font-medium transition-colors",
+                    "min-h-[48px]",
+                    active
+                      ? "text-[#1D4ED8]"
+                      : "text-gray-400 hover:text-gray-600"
                   )}
-                  onClick={() => setActiveTab(item.id)}
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </nav>
-        </header>
-
-        {/* Main content */}
-        <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
-
-        {/* Bottom tab nav - mobile only */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white md:hidden">
-          <div className="mx-auto flex max-w-3xl items-center justify-around">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={cn(
-                  "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-h-[56px] justify-center",
-                  activeTab === item.id
-                    ? "text-[#0B2545]"
-                    : "text-gray-400 hover:text-gray-600"
-                )}
-                onClick={() => setActiveTab(item.id)}
-              >
-                <item.icon
-                  className={cn(
-                    "h-5 w-5",
-                    activeTab === item.id
-                      ? "text-[#0B2545]"
-                      : "text-gray-400"
-                  )}
-                />
-                {item.label}
-              </button>
-            ))}
+                  <item.icon
+                    className={cn("h-5 w-5", active && "text-[#1D4ED8]")}
+                  />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
           </div>
         </nav>
       </div>
-    </ParentNavProvider>
+    </ActiveChildContext.Provider>
   );
 }
