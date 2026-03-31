@@ -17,6 +17,14 @@ import {
   Plus,
   Minus,
   Users,
+  Star,
+  TrendingUp,
+  TrendingDown,
+  Shield,
+  Target,
+  BarChart3,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -181,6 +189,37 @@ const AGE_GROUPS = ["U7", "U9", "U11", "U13", "U15", "U17"];
 const DIVISIONS = ["Mixed", "A", "B", "C"];
 const STATUSES: TeamStatus[] = ["Active", "Draft", "Full", "Archived"];
 
+type PositionKey = "Goalkeeper" | "Defender" | "Midfielder" | "Forward";
+type PositionShort = "GK" | "DEF" | "MID" | "FWD";
+
+const POSITION_SHORT: Record<PositionKey, PositionShort> = {
+  Goalkeeper: "GK",
+  Defender: "DEF",
+  Midfielder: "MID",
+  Forward: "FWD",
+};
+
+const POSITION_ORDER: Record<string, number> = {
+  Goalkeeper: 0,
+  Defender: 1,
+  Midfielder: 2,
+  Forward: 3,
+};
+
+/* Ideal position ratios per team capacity */
+function getIdealPositionRanges(cap: number): Record<PositionShort, [number, number]> {
+  if (cap <= 10) {
+    return { GK: [1, 2], DEF: [2, 3], MID: [2, 3], FWD: [2, 3] };
+  }
+  if (cap <= 14) {
+    return { GK: [1, 2], DEF: [3, 4], MID: [3, 4], FWD: [2, 3] };
+  }
+  return { GK: [1, 2], DEF: [4, 5], MID: [4, 5], FWD: [3, 4] };
+}
+
+type SortOption = "grade-desc" | "grade-asc" | "position" | "name";
+type PositionFilter = "All" | PositionShort;
+
 /* ------------------------------------------------------------------ */
 /*  Grade colour helper                                                */
 /* ------------------------------------------------------------------ */
@@ -192,10 +231,27 @@ function gradeVariant(score: number): "success" | "info" | "warning" | "danger" 
   return "danger";
 }
 
-function teamRatingLabel(avg: number): { label: string; variant: "success" | "info" | "warning" } {
-  if (avg >= 8.0) return { label: "Top Heavy", variant: "warning" };
-  if (avg >= 6.5) return { label: "Balanced", variant: "success" };
-  return { label: "Developing", variant: "info" };
+/* Team rating on 5-point scale */
+function teamRatingInfo(fivePointAvg: number): {
+  label: string;
+  colour: string;
+  bgColour: string;
+  variant: "success" | "info" | "warning" | "danger";
+} {
+  if (fivePointAvg >= 4.0)
+    return { label: "Expert", colour: "text-[#15803D]", bgColour: "bg-[#15803D]", variant: "success" };
+  if (fivePointAvg >= 3.0)
+    return { label: "Competent", colour: "text-[#1D4ED8]", bgColour: "bg-[#1D4ED8]", variant: "info" };
+  if (fivePointAvg >= 2.0)
+    return { label: "Developing", colour: "text-[#B45309]", bgColour: "bg-[#B45309]", variant: "warning" };
+  return { label: "Basic", colour: "text-[#B91C1C]", bgColour: "bg-[#B91C1C]", variant: "danger" };
+}
+
+function calcStdDev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
 }
 
 /* ------------------------------------------------------------------ */
@@ -215,6 +271,10 @@ export default function TeamDetailPage() {
   const [rosterIds, setRosterIds] = useState<number[]>(initialRosterIds);
   const [playerSearch, setPlayerSearch] = useState("");
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>("grade-desc");
+  const [positionFilter, setPositionFilter] = useState<PositionFilter>("All");
+  const [hoveredPlayerId, setHoveredPlayerId] = useState<number | null>(null);
+  const [hoveredRemoveId, setHoveredRemoveId] = useState<number | null>(null);
 
   /* ---- Settings state ---- */
   const [teamName, setTeamName] = useState(team?.name ?? "");
@@ -226,28 +286,131 @@ export default function TeamDetailPage() {
 
   /* ---- Derived data ---- */
   const rosterPlayers = useMemo(
-    () => ALL_PLAYERS.filter((p) => rosterIds.includes(p.id)),
+    () =>
+      ALL_PLAYERS.filter((p) => rosterIds.includes(p.id)).sort(
+        (a, b) => (POSITION_ORDER[a.position] ?? 9) - (POSITION_ORDER[b.position] ?? 9)
+      ),
     [rosterIds]
   );
 
   const availablePlayers = useMemo(() => {
     const q = playerSearch.toLowerCase();
-    return ALL_PLAYERS.filter((p) => {
+    let filtered = ALL_PLAYERS.filter((p) => {
       if (rosterIds.includes(p.id)) return false;
       if (p.ageGroup !== ageGroup) return false;
       if (q && !p.name.toLowerCase().includes(q)) return false;
+      if (positionFilter !== "All") {
+        const short = POSITION_SHORT[p.position as PositionKey];
+        if (short !== positionFilter) return false;
+      }
       return true;
-    }).sort((a, b) => b.gradeScore - a.gradeScore);
-  }, [rosterIds, ageGroup, playerSearch]);
+    });
 
-  const avgGrade =
-    rosterPlayers.length > 0
-      ? rosterPlayers.reduce((sum, p) => sum + p.gradeScore, 0) / rosterPlayers.length
-      : 0;
+    switch (sortOption) {
+      case "grade-desc":
+        filtered.sort((a, b) => b.gradeScore - a.gradeScore);
+        break;
+      case "grade-asc":
+        filtered.sort((a, b) => a.gradeScore - b.gradeScore);
+        break;
+      case "position":
+        filtered.sort(
+          (a, b) => (POSITION_ORDER[a.position] ?? 9) - (POSITION_ORDER[b.position] ?? 9)
+        );
+        break;
+      case "name":
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+    }
+
+    return filtered;
+  }, [rosterIds, ageGroup, playerSearch, sortOption, positionFilter]);
+
+  /* ---- Analytics calculations ---- */
+  const grades = rosterPlayers.map((p) => p.gradeScore);
+  const avgGrade = grades.length > 0 ? grades.reduce((a, b) => a + b, 0) / grades.length : 0;
+  const fivePointRating = avgGrade / 2;
+  const ratingInfo = teamRatingInfo(fivePointRating);
 
   const capacityPct = capacity > 0 ? Math.round((rosterPlayers.length / capacity) * 100) : 0;
 
-  const rating = teamRatingLabel(avgGrade);
+  /* Position counts */
+  const positionCounts = useMemo(() => {
+    const counts: Record<PositionShort, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+    rosterPlayers.forEach((p) => {
+      const short = POSITION_SHORT[p.position as PositionKey];
+      if (short) counts[short]++;
+    });
+    return counts;
+  }, [rosterPlayers]);
+
+  const idealRanges = getIdealPositionRanges(capacity);
+
+  /* Skill spread */
+  const skillSpread = useMemo(() => {
+    if (rosterPlayers.length === 0)
+      return { lowest: null, highest: null, avg: 0, stdDev: 0, label: "No players" };
+
+    const sorted = [...rosterPlayers].sort((a, b) => a.gradeScore - b.gradeScore);
+    const lowest = sorted[0];
+    const highest = sorted[sorted.length - 1];
+    const avg = grades.reduce((a, b) => a + b, 0) / grades.length;
+    const stdDev = calcStdDev(grades);
+
+    let label: string;
+    if (stdDev < 0.6) label = "Tight spread";
+    else if (stdDev < 1.0) label = "Moderate spread";
+    else label = "Wide spread";
+
+    return { lowest, highest, avg, stdDev, label };
+  }, [rosterPlayers, grades]);
+
+  /* Balance score (0-100%) */
+  const balanceScore = useMemo(() => {
+    if (rosterPlayers.length === 0) return { score: 0, label: "No players" };
+
+    /* Factor 1: Position coverage (40%) */
+    let posScore = 0;
+    const positions: PositionShort[] = ["GK", "DEF", "MID", "FWD"];
+    positions.forEach((pos) => {
+      const count = positionCounts[pos];
+      const [min, max] = idealRanges[pos];
+      if (count >= min && count <= max) posScore += 25;
+      else if (count > 0) posScore += 12;
+    });
+    const positionFactor = posScore / 100;
+
+    /* Factor 2: Skill evenness (30%) — lower std dev = better */
+    const stdDev = skillSpread.stdDev;
+    const skillFactor = Math.max(0, 1 - stdDev / 3);
+
+    /* Factor 3: Capacity utilisation (30%) */
+    const capFactor = Math.min(rosterPlayers.length / capacity, 1);
+
+    const total = Math.round(positionFactor * 40 + skillFactor * 30 + capFactor * 30);
+
+    let label: string;
+    if (total >= 75) label = "Well Balanced";
+    else if (total >= 50) label = "Needs Attention";
+    else label = "Unbalanced";
+
+    return { score: total, label };
+  }, [rosterPlayers, positionCounts, idealRanges, skillSpread, capacity]);
+
+  /* Impact preview calculations */
+  function calcRatingAfterAdd(playerId: number): number {
+    const player = ALL_PLAYERS.find((p) => p.id === playerId);
+    if (!player) return fivePointRating;
+    const newTotal = grades.reduce((a, b) => a + b, 0) + player.gradeScore;
+    return newTotal / (grades.length + 1) / 2;
+  }
+
+  function calcRatingAfterRemove(playerId: number): number {
+    const player = ALL_PLAYERS.find((p) => p.id === playerId);
+    if (!player || grades.length <= 1) return 0;
+    const newTotal = grades.reduce((a, b) => a + b, 0) - player.gradeScore;
+    return newTotal / (grades.length - 1) / 2;
+  }
 
   /* ---- Handlers ---- */
   const addPlayer = (playerId: number) => {
@@ -256,10 +419,18 @@ export default function TeamDetailPage() {
       return;
     }
     setRosterIds((prev) => [...prev, playerId]);
+    const player = ALL_PLAYERS.find((p) => p.id === playerId);
+    if (player) {
+      addToast(`${player.name} added to roster`, "success");
+    }
   };
 
   const removePlayer = (playerId: number) => {
     setRosterIds((prev) => prev.filter((id) => id !== playerId));
+    const player = ALL_PLAYERS.find((p) => p.id === playerId);
+    if (player) {
+      addToast(`${player.name} removed from roster`, "success");
+    }
   };
 
   const handleSubmitRoster = () => {
@@ -320,196 +491,460 @@ export default function TeamDetailPage() {
         {/*  Roster Tab                                                   */}
         {/* ============================================================ */}
         <TabsContent value="roster">
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* ---- Left: Available Players ---- */}
-            <div className="rounded-lg border border-gray-200 bg-white">
-              <div className="border-b border-gray-100 px-4 py-3">
-                <h2 className="text-sm font-semibold text-[#0B2545]">
-                  Available Players
-                </h2>
-                <p className="text-xs text-gray-500">
-                  {availablePlayers.length} players in {ageGroup}
+          <div className="space-y-6">
+            {/* ============================================================ */}
+            {/*  Team Intelligence Panel                                      */}
+            {/* ============================================================ */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* ---- Card 1: Team Rating ---- */}
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <Star className="h-3.5 w-3.5" />
+                  Team Rating
+                </div>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <span className={cn("text-3xl font-bold tabular-nums", ratingInfo.colour)}>
+                    {rosterPlayers.length > 0 ? fivePointRating.toFixed(1) : "--"}
+                  </span>
+                  <span className="text-sm text-gray-400">/ 5.0</span>
+                </div>
+                {rosterPlayers.length > 0 && (
+                  <>
+                    <Badge variant={ratingInfo.variant} className="mt-2">
+                      {ratingInfo.label}
+                    </Badge>
+                    <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className={cn("h-full rounded-full transition-all", ratingInfo.bgColour)}
+                        style={{ width: `${Math.min((fivePointRating / 5) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </>
+                )}
+                <p className="mt-2 text-xs text-gray-500">
+                  Avg of {rosterPlayers.length} player grade{rosterPlayers.length !== 1 ? "s" : ""} / 2
                 </p>
               </div>
-              <div className="px-4 py-3">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search players..."
-                    value={playerSearch}
-                    onChange={(e) => setPlayerSearch(e.target.value)}
-                    className="pl-9"
-                  />
+
+              {/* ---- Card 2: Position Balance ---- */}
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <Shield className="h-3.5 w-3.5" />
+                  Position Balance
+                </div>
+                <div className="mt-3 space-y-2">
+                  {(["GK", "DEF", "MID", "FWD"] as PositionShort[]).map((pos) => {
+                    const count = positionCounts[pos];
+                    const [min, max] = idealRanges[pos];
+                    const inRange = count >= min && count <= max;
+                    const message =
+                      count < min
+                        ? `Need ${min - count} more`
+                        : count > max
+                          ? `${count - max} over ideal`
+                          : null;
+
+                    return (
+                      <div key={pos} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          {inRange ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-[#15803D]" />
+                          ) : (
+                            <AlertTriangle className="h-3.5 w-3.5 text-[#B45309]" />
+                          )}
+                          <span className="font-medium text-[#0B2545]">{pos}</span>
+                          <span className="tabular-nums text-gray-500">
+                            {count}
+                          </span>
+                        </div>
+                        <div>
+                          {message ? (
+                            <span className="text-xs text-[#B45309]">{message}</span>
+                          ) : (
+                            <span className="text-xs text-[#15803D]">
+                              {min}-{max} ideal
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="max-h-[420px] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-y border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      <th className="px-4 py-2">Name</th>
-                      <th className="px-4 py-2">Position</th>
-                      <th className="px-4 py-2">Grade</th>
-                      <th className="px-4 py-2 w-12"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {availablePlayers.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
-                          No available players
-                        </td>
-                      </tr>
-                    ) : (
-                      availablePlayers.map((player) => (
-                        <tr
-                          key={player.id}
-                          className="border-t border-gray-50 transition-colors hover:bg-blue-50/40"
-                        >
-                          <td className="px-4 py-2.5 font-medium text-[#0B2545]">
-                            {player.name}
-                          </td>
-                          <td className="px-4 py-2.5 text-gray-600">
-                            {player.position}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <Badge variant={gradeVariant(player.gradeScore)}>
-                              {player.gradeScore.toFixed(1)}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <button
-                              type="button"
-                              onClick={() => addPlayer(player.id)}
-                              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-[#15803D] transition-colors hover:bg-[#F0FDF4]"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
-            {/* ---- Right: Team Roster ---- */}
-            <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 bg-white">
-                <div className="border-b border-gray-100 px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-sm font-semibold text-[#0B2545]">
-                        Team Roster
-                      </h2>
-                      <p className="text-xs text-gray-500">
-                        {rosterPlayers.length} / {capacity} players
-                      </p>
+              {/* ---- Card 3: Skill Spread ---- */}
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Skill Spread
+                </div>
+                {rosterPlayers.length > 0 ? (
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <TrendingDown className="h-3.5 w-3.5 text-[#B45309]" />
+                        <span className="text-gray-600">Low</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-semibold tabular-nums text-[#0B2545]">
+                          {skillSpread.lowest?.gradeScore.toFixed(1)}
+                        </span>
+                        <span className="ml-1 text-xs text-gray-400">
+                          {skillSpread.lowest?.name.split(" ")[0]}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm font-medium tabular-nums text-gray-600">
-                        {rosterPlayers.length}/{capacity}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <TrendingUp className="h-3.5 w-3.5 text-[#15803D]" />
+                        <span className="text-gray-600">High</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-semibold tabular-nums text-[#0B2545]">
+                          {skillSpread.highest?.gradeScore.toFixed(1)}
+                        </span>
+                        <span className="ml-1 text-xs text-gray-400">
+                          {skillSpread.highest?.name.split(" ")[0]}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Avg</span>
+                      <span className="font-semibold tabular-nums text-[#0B2545]">
+                        {skillSpread.avg.toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="mt-1 border-t border-gray-100 pt-2">
+                      <Badge
+                        variant={
+                          skillSpread.stdDev < 0.6
+                            ? "success"
+                            : skillSpread.stdDev < 1.0
+                              ? "info"
+                              : "warning"
+                        }
+                      >
+                        {skillSpread.label}
+                      </Badge>
+                      <span className="ml-2 text-xs text-gray-400">
+                        SD: {skillSpread.stdDev.toFixed(2)}
                       </span>
                     </div>
                   </div>
-                  {/* Capacity bar */}
-                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        capacityPct >= 100
-                          ? "bg-[#B45309]"
-                          : capacityPct >= 75
-                            ? "bg-[#1D4ED8]"
-                            : "bg-[#15803D]"
-                      )}
-                      style={{ width: `${Math.min(capacityPct, 100)}%` }}
+                ) : (
+                  <p className="mt-3 text-sm text-gray-400">No players to analyse</p>
+                )}
+              </div>
+
+              {/* ---- Card 4: Balance Score ---- */}
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <Target className="h-3.5 w-3.5" />
+                  Balance Indicator
+                </div>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <span
+                    className={cn(
+                      "text-3xl font-bold tabular-nums",
+                      balanceScore.score >= 75
+                        ? "text-[#15803D]"
+                        : balanceScore.score >= 50
+                          ? "text-[#B45309]"
+                          : "text-[#B91C1C]"
+                    )}
+                  >
+                    {rosterPlayers.length > 0 ? `${balanceScore.score}%` : "--"}
+                  </span>
+                </div>
+                {rosterPlayers.length > 0 && (
+                  <>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          balanceScore.score >= 75
+                            ? "bg-[#15803D]"
+                            : balanceScore.score >= 50
+                              ? "bg-[#B45309]"
+                              : "bg-[#B91C1C]"
+                        )}
+                        style={{ width: `${balanceScore.score}%` }}
+                      />
+                    </div>
+                    <Badge
+                      variant={
+                        balanceScore.score >= 75
+                          ? "success"
+                          : balanceScore.score >= 50
+                            ? "warning"
+                            : "danger"
+                      }
+                      className="mt-2"
+                    >
+                      {balanceScore.label}
+                    </Badge>
+                  </>
+                )}
+                <div className="mt-2 space-y-0.5 text-xs text-gray-400">
+                  <p>Position coverage + Skill evenness</p>
+                  <p>+ Capacity utilisation</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ============================================================ */}
+            {/*  Two-panel layout: Available Players & Team Roster            */}
+            {/* ============================================================ */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* ---- Left: Available Players ---- */}
+              <div className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-100 px-4 py-3">
+                  <h2 className="text-sm font-semibold text-[#0B2545]">
+                    Available Players
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    {availablePlayers.length} players in {ageGroup}
+                  </p>
+                </div>
+
+                {/* Search + Sort controls */}
+                <div className="space-y-3 border-b border-gray-100 px-4 py-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search players..."
+                      value={playerSearch}
+                      onChange={(e) => setPlayerSearch(e.target.value)}
+                      className="pl-9"
                     />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      options={[
+                        { label: "Grade (High\u2192Low)", value: "grade-desc" },
+                        { label: "Grade (Low\u2192High)", value: "grade-asc" },
+                        { label: "Position", value: "position" },
+                        { label: "Name", value: "name" },
+                      ]}
+                      value={sortOption}
+                      onChange={(e) => setSortOption(e.target.value as SortOption)}
+                    />
+                  </div>
+                  {/* Position filter chips */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["All", "GK", "DEF", "MID", "FWD"] as PositionFilter[]).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setPositionFilter(filter)}
+                        className={cn(
+                          "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                          positionFilter === filter
+                            ? "bg-[#1D4ED8] text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        )}
+                      >
+                        {filter}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="max-h-[340px] overflow-y-auto">
+                <div className="max-h-[420px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                        <th className="px-4 py-2 w-10">#</th>
+                      <tr className="border-y border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         <th className="px-4 py-2">Name</th>
-                        <th className="px-4 py-2">Position</th>
+                        <th className="px-4 py-2">Pos</th>
                         <th className="px-4 py-2">Grade</th>
                         <th className="px-4 py-2 w-12"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {rosterPlayers.length === 0 ? (
+                      {availablePlayers.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                            No players assigned yet
+                          <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
+                            No available players
                           </td>
                         </tr>
                       ) : (
-                        rosterPlayers.map((player, idx) => (
-                          <tr
-                            key={player.id}
-                            className="border-t border-gray-50 transition-colors hover:bg-blue-50/40"
-                          >
-                            <td className="px-4 py-2.5 text-gray-400 tabular-nums">
-                              {idx + 1}
-                            </td>
-                            <td className="px-4 py-2.5 font-medium text-[#0B2545]">
-                              {player.name}
-                            </td>
-                            <td className="px-4 py-2.5 text-gray-600">
-                              {player.position}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <Badge variant={gradeVariant(player.gradeScore)}>
-                                {player.gradeScore.toFixed(1)}
-                              </Badge>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <button
-                                type="button"
-                                onClick={() => removePlayer(player.id)}
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
-                              >
-                                <Minus className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                        availablePlayers.map((player) => {
+                          const isHovered = hoveredPlayerId === player.id;
+                          const newRating = isHovered ? calcRatingAfterAdd(player.id) : 0;
+
+                          return (
+                            <tr
+                              key={player.id}
+                              className="border-t border-gray-50 transition-colors hover:bg-blue-50/40"
+                              onMouseEnter={() => setHoveredPlayerId(player.id)}
+                              onMouseLeave={() => setHoveredPlayerId(null)}
+                              onFocus={() => setHoveredPlayerId(player.id)}
+                              onBlur={() => setHoveredPlayerId(null)}
+                            >
+                              <td className="px-4 py-2.5">
+                                <div className="font-medium text-[#0B2545]">{player.name}</div>
+                                {isHovered && rosterPlayers.length > 0 && (
+                                  <div className="text-xs text-[#1D4ED8]">
+                                    Rating: {fivePointRating.toFixed(1)} → {newRating.toFixed(1)}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-600">
+                                {POSITION_SHORT[player.position as PositionKey] ?? player.position}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <Badge variant={gradeVariant(player.gradeScore)}>
+                                  <Star className="mr-0.5 inline h-3 w-3" />
+                                  {(player.gradeScore / 2).toFixed(1)}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => addPlayer(player.id)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-[#15803D] transition-colors hover:bg-[#F0FDF4]"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Team Rating card */}
-              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <h3 className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Team Rating
-                </h3>
-                <div className="mt-2 flex items-center gap-3">
-                  <span className="text-2xl font-bold text-[#0B2545] tabular-nums">
-                    {avgGrade > 0 ? avgGrade.toFixed(1) : "--"}
-                  </span>
-                  {rosterPlayers.length > 0 && (
-                    <Badge variant={rating.variant}>{rating.label}</Badge>
-                  )}
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Average grade across {rosterPlayers.length} player{rosterPlayers.length !== 1 ? "s" : ""}
-                </p>
-              </div>
+              {/* ---- Right: Team Roster ---- */}
+              <div className="space-y-4">
+                <div className="rounded-lg border border-gray-200 bg-white">
+                  <div className="border-b border-gray-100 px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-sm font-semibold text-[#0B2545]">
+                          Team Roster
+                        </h2>
+                        <p className="text-xs text-gray-500">
+                          {rosterPlayers.length} / {capacity} players
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="flex items-center gap-1.5">
+                            <Users className="h-4 w-4 text-gray-400" />
+                            <span className="text-sm font-medium tabular-nums text-gray-600">
+                              {rosterPlayers.length}/{capacity}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Star className="h-3.5 w-3.5 text-[#B45309]" />
+                            <span className={cn("text-sm font-semibold tabular-nums", ratingInfo.colour)}>
+                              {rosterPlayers.length > 0 ? `${fivePointRating.toFixed(1)}/5` : "--"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Capacity bar */}
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          capacityPct >= 100
+                            ? "bg-[#B45309]"
+                            : capacityPct >= 75
+                              ? "bg-[#1D4ED8]"
+                              : "bg-[#15803D]"
+                        )}
+                        style={{ width: `${Math.min(capacityPct, 100)}%` }}
+                      />
+                    </div>
+                  </div>
 
-              {/* Submit Roster button */}
-              <Button
-                variant="accent"
-                className="w-full"
-                onClick={() => setSubmitOpen(true)}
-              >
-                Submit Roster
-              </Button>
+                  <div className="max-h-[420px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          <th className="px-4 py-2 w-10">#</th>
+                          <th className="px-4 py-2">Name</th>
+                          <th className="px-4 py-2">Pos</th>
+                          <th className="px-4 py-2">Grade</th>
+                          <th className="px-4 py-2 w-12"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rosterPlayers.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                              No players assigned yet
+                            </td>
+                          </tr>
+                        ) : (
+                          rosterPlayers.map((player, idx) => {
+                            const isHovered = hoveredRemoveId === player.id;
+                            const newRating = isHovered
+                              ? calcRatingAfterRemove(player.id)
+                              : 0;
+
+                            return (
+                              <tr
+                                key={player.id}
+                                className="border-t border-gray-50 transition-colors hover:bg-blue-50/40"
+                                onMouseEnter={() => setHoveredRemoveId(player.id)}
+                                onMouseLeave={() => setHoveredRemoveId(null)}
+                                onFocus={() => setHoveredRemoveId(player.id)}
+                                onBlur={() => setHoveredRemoveId(null)}
+                              >
+                                <td className="px-4 py-2.5 text-gray-400 tabular-nums">
+                                  {idx + 1}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <div className="font-medium text-[#0B2545]">{player.name}</div>
+                                  {isHovered && rosterPlayers.length > 1 && (
+                                    <div className="text-xs text-[#B91C1C]">
+                                      Rating: {fivePointRating.toFixed(1)} → {newRating.toFixed(1)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <Badge variant="default">
+                                    {POSITION_SHORT[player.position as PositionKey] ?? player.position}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <Badge variant={gradeVariant(player.gradeScore)}>
+                                    <Star className="mr-0.5 inline h-3 w-3" />
+                                    {(player.gradeScore / 2).toFixed(1)}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => removePlayer(player.id)}
+                                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
+                                  >
+                                    <Minus className="h-4 w-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Submit Roster button */}
+                <Button
+                  variant="accent"
+                  className="w-full"
+                  onClick={() => setSubmitOpen(true)}
+                >
+                  Submit Roster
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -519,7 +954,7 @@ export default function TeamDetailPage() {
             onOpenChange={(open) => setSubmitOpen(open)}
             onConfirm={handleSubmitRoster}
             title="Submit Roster"
-            description={`Confirm the roster for ${teamName || team.name} with ${rosterPlayers.length} player${rosterPlayers.length !== 1 ? "s" : ""}. This will finalise the team lineup.`}
+            description={`Confirm the roster for ${teamName || team.name} with ${rosterPlayers.length} player${rosterPlayers.length !== 1 ? "s" : ""}. Team rating: ${fivePointRating.toFixed(1)}/5.0 (${ratingInfo.label}). This will finalise the team lineup.`}
             variant="accent"
             confirmLabel="Submit"
           />
