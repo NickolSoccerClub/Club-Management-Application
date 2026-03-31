@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,6 @@ import { PageHeader } from "@/components/committee/shared/page-header";
 import { Pagination } from "@/components/committee/shared/pagination";
 import { EmptyState } from "@/components/committee/shared/empty-state";
 import { AgeGroupSettings, type AgeGroupCap } from "@/components/committee/registrar/age-group-settings";
-import { TeamBuilder, type TeamForBuilder, type TeamPlayer } from "@/components/committee/registrar/team-builder";
 import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Search,
@@ -28,6 +28,14 @@ import {
 /* ------------------------------------------------------------------ */
 
 type TeamStatus = "Active" | "Draft" | "Full";
+
+interface TeamPlayer {
+  id: number;
+  name: string;
+  ageGroup: string;
+  position: string;
+  gradeScore: number;
+}
 
 interface Team {
   id: number;
@@ -176,6 +184,7 @@ const statusOptions = STATUSES.map((s) => ({ label: s, value: s }));
 /* ------------------------------------------------------------------ */
 
 export default function TeamManagementPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [ageFilter, setAgeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -187,8 +196,6 @@ export default function TeamManagementPage() {
   /* Dialog states */
   const [autoCreateOpen, setAutoCreateOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [builderTeam, setBuilderTeam] = useState<TeamForBuilder | null>(null);
-
   /* Age group caps */
   const [ageGroupCaps, setAgeGroupCaps] = useState<Record<string, number>>({
     U7: 10,
@@ -264,33 +271,10 @@ export default function TeamManagementPage() {
       });
   }, [ageGroupCaps]);
 
-  /* ---- Team Builder: open for a specific team ---- */
-  const openTeamBuilder = (team: Team) => {
-    const rosterIds = TEAM_PLAYER_MAP[team.id] || [];
-    const roster = ALL_PLAYERS.filter((p) => rosterIds.includes(p.id));
-
-    const teamForBuilder: TeamForBuilder = {
-      id: team.id,
-      name: team.name,
-      ageGroup: team.ageGroup,
-      division: team.division,
-      coach: team.coach,
-      capacity: team.capacity,
-      roster,
-    };
-
-    setBuilderTeam(teamForBuilder);
-  };
-
   /* ---- Handlers ---- */
   const handleAutoCreate = () => {
     addToast("Teams auto-created based on registration demand", "success");
     setAutoCreateOpen(false);
-  };
-
-  const handleBuilderSubmit = () => {
-    addToast("Team roster updated successfully", "success");
-    setBuilderTeam(null);
   };
 
   const handleCapsChange = (caps: AgeGroupCap[]) => {
@@ -437,7 +421,7 @@ export default function TeamManagementPage() {
                 return (
                   <tr
                     key={team.id}
-                    onClick={() => openTeamBuilder(team)}
+                    onClick={() => router.push(`/committee/registrar/teams/${team.id}`)}
                     className={cn(
                       "border-t border-gray-100 transition-colors hover:bg-blue-50/40 cursor-pointer",
                       idx % 2 === 1 && "bg-[#F8FAFC]"
@@ -488,7 +472,7 @@ export default function TeamManagementPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => openTeamBuilder(team)}
+                        onClick={() => router.push(`/committee/registrar/teams/${team.id}`)}
                       >
                         Edit
                       </Button>
@@ -509,17 +493,6 @@ export default function TeamManagementPage() {
           totalItems={filtered.length}
           perPage={perPage}
           onPageChange={setPage}
-        />
-      )}
-
-      {/* Team Builder dialog */}
-      {builderTeam && (
-        <TeamBuilder
-          team={builderTeam}
-          availablePlayers={ALL_PLAYERS}
-          open={builderTeam !== null}
-          onClose={() => setBuilderTeam(null)}
-          onSubmit={handleBuilderSubmit}
         />
       )}
 
