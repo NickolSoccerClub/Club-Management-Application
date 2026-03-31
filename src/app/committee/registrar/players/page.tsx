@@ -12,6 +12,8 @@ import { PageHeader } from "@/components/committee/shared/page-header";
 import { Pagination } from "@/components/committee/shared/pagination";
 import { EmptyState } from "@/components/committee/shared/empty-state";
 import { PlayerDetailPanel, type PlayerFull } from "@/components/committee/registrar/player-detail-panel";
+import { AddPlayerDialog } from "@/components/committee/registrar/add-player-dialog";
+import { ImportPlayersDialog } from "@/components/committee/registrar/import-players-dialog";
 import { useToastStore } from "@/lib/stores/toast-store";
 import {
   Upload,
@@ -158,6 +160,8 @@ export default function PlayerManagementPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [detailPlayer, setDetailPlayer] = useState<PlayerFull | null>(null);
   const [convertOpen, setConvertOpen] = useState(false);
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const perPage = 50;
 
   const addToast = useToastStore((s) => s.addToast);
@@ -227,8 +231,23 @@ export default function PlayerManagementPage() {
     ).length;
   }, [selected]);
 
-  const handleExport = () => addToast("Player data exported successfully", "success");
-  const handleImport = () => addToast("Import dialog opened", "info");
+  const handleExport = useCallback(() => {
+    const headers = ["First Name","Last Name","DOB","Age Group","Team","Status","Position","Grade","FFA Number","Guardian Name","Guardian Email","Guardian Phone","Medical Notes","Photo Consent"];
+    const rows = filtered.map((p) => [
+      p.firstName, p.lastName, p.dob, p.ageGroup, p.team, p.status, p.position,
+      (p.gradeScore / 2).toFixed(1), p.ffaNumber, p.guardianName, p.guardianEmail,
+      p.guardianPhone, p.medicalNotes, p.photoConsent,
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `nickol_sc_players_${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addToast(`Exported ${filtered.length} players to CSV`, "success");
+  }, [filtered, addToast]);
 
   const handleDeleteConfirm = () => {
     if (deleteTarget) {
@@ -255,14 +274,14 @@ export default function PlayerManagementPage() {
       >
         {/* Import — outlined with subtle hover fill */}
         <button
-          onClick={handleImport}
+          onClick={() => setShowImport(true)}
           className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97]"
         >
           <Upload className="h-4 w-4" />
           Import
         </button>
 
-        {/* Export — outlined with subtle hover fill */}
+        {/* Export — generates and downloads CSV */}
         <button
           onClick={handleExport}
           className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97]"
@@ -271,8 +290,9 @@ export default function PlayerManagementPage() {
           Export
         </button>
 
-        {/* Add Player — gradient blue */}
+        {/* Add Player — opens form dialog */}
         <button
+          onClick={() => setShowAddPlayer(true)}
           className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:from-blue-700 hover:to-blue-600 hover:shadow-lg active:scale-[0.97]"
         >
           <Plus className="h-4 w-4" />
@@ -585,6 +605,12 @@ export default function PlayerManagementPage() {
         variant="accent"
         confirmLabel="Convert"
       />
+
+      {/* Add Player dialog */}
+      <AddPlayerDialog open={showAddPlayer} onOpenChange={setShowAddPlayer} />
+
+      {/* Import Players dialog */}
+      <ImportPlayersDialog open={showImport} onOpenChange={setShowImport} />
     </div>
   );
 }
